@@ -14,6 +14,7 @@ from tidal_dl_ng.helper.decorator import SingletonMeta
 from tidal_dl_ng.helper.path import path_config_base, path_file_settings, path_file_token
 from tidal_dl_ng.model.cfg import Settings as ModelSettings
 from tidal_dl_ng.model.cfg import Token as ModelToken
+from tidal_dl_ng.security.proxy_manager import ProxyManager
 
 
 class BaseConfig:
@@ -93,6 +94,7 @@ class Tidal(BaseConfig, metaclass=SingletonMeta):
     token_from_storage: bool = False
     settings: Settings
     is_pkce: bool
+    proxy_manager: ProxyManager
 
     def __init__(self, settings: Settings = None):
         self.cls_model = ModelToken
@@ -105,16 +107,46 @@ class Tidal(BaseConfig, metaclass=SingletonMeta):
 
         if settings:
             self.settings = settings
-            self.settings_apply()
+        else:
+            self.settings = Settings()
+            
+        self.settings_apply()
+        
+        # Initialize proxy manager and apply proxy settings
+        self.proxy_manager = ProxyManager(self.settings)
+        self._apply_proxy_settings()
 
     def settings_apply(self, settings: Settings = None) -> bool:
         if settings:
             self.settings = settings
+            # Update proxy manager with new settings
+            self.proxy_manager = ProxyManager(self.settings)
+            self._apply_proxy_settings()
 
         self.session.audio_quality = self.settings.data.quality_audio
         self.session.video_quality = tidalapi.VideoQuality.high
 
         return True
+
+    def _apply_proxy_settings(self) -> None:
+        """Apply proxy settings to the TIDAL session's request session."""
+        # Get proxy configuration
+        proxies = self.proxy_manager.get_proxies()
+        
+        # Apply proxy settings to the session's request_session
+        if proxies:
+            self.session.request_session.proxies.update(proxies)
+            self.session.request_session.verify = self.proxy_manager.get_verify_ssl()
+            
+            # Log proxy configuration for debugging
+            if self.settings.data.proxy_type == "SOCKS5":
+                print(f"Proxy configured: SOCKS5 at {self.settings.data.proxy_host}:{self.settings.data.proxy_port}")
+            else:
+                print(f"Proxy configured: {self.settings.data.proxy_type or 'HTTP/HTTPS'} at {self.settings.data.proxy_host}:{self.settings.data.proxy_port}")
+        else:
+            # Clear any existing proxy settings
+            self.session.request_session.proxies.clear()
+            self.session.request_session.verify = True
 
     def login_token(self, do_pkce: bool = False) -> bool:
         result = False

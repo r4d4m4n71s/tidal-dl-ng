@@ -1,15 +1,15 @@
 import json
+import os
+from typing import Dict, List, Any, Optional
 
 import requests
 
-# See also
-# https://github.com/yaronzz/Tidal-Media-Downloader/commit/1d5b8cd8f65fd1def45d6406778248249d6dfbdf
-# https://github.com/yaronzz/Tidal-Media-Downloader/pull/840
-# https://github.com/nathom/streamrip/tree/main/streamrip
-# https://github.com/arnesongit/plugin.audio.tidal2/blob/e9429d601d0c303d775d05a19a66415b57479d87/resources/lib/tidal2/tidalapi/__init__.py#L86
+from tidal_dl_ng.constants import REQUESTS_TIMEOUT_SEC
+from tidal_dl_ng.security.key_manager import SecureKeyManager
+from tidal_dl_ng.security.header_manager import HeaderManager
 
-# TODO: Implement this into `Download`: Session should randomize the usage.
-__KEYS_JSON__ = """
+# Legacy keys for backward compatibility and migration
+__LEGACY_KEYS_JSON__ = """
 {
     "version": "1.0.1",
     "keys": [
@@ -56,59 +56,129 @@ __KEYS_JSON__ = """
     ]
 }
 """
-__API_KEYS__ = json.loads(__KEYS_JSON__)
-__ERROR_KEY__ = (
-    {
-        "platform": "None",
-        "formats": "",
-        "clientId": "",
-        "clientSecret": "",
-        "valid": "False",
-    },
-)
 
-from tidal_dl_ng.constants import REQUESTS_TIMEOUT_SEC
+__ERROR_KEY__ = {
+    "platform": "None",  
+    "formats": "",
+    "clientId": "",
+    "clientSecret": "",
+    "valid": "False",
+}
 
 
-def getNum():
-    return len(__API_KEYS__["keys"])
+class APIKeyProvider:
+    """Secure API key provider with rotation and obfuscation."""
+    
+    def __init__(self):
+        """Initialize the API key provider."""
+        self.key_manager = SecureKeyManager()
+        self.header_manager = HeaderManager()
+        self._keys: Optional[List[Dict[str, Any]]] = None
+        self._current_key_index = 0
+        self._initialize_keys()
+        
+    def _initialize_keys(self) -> None:
+        """Initialize keys from various sources."""
+        # Try environment variables first
+        env_key = self.key_manager.get_key_from_env()
+        if env_key:
+            self._keys = [env_key]
+            print("Using API keys from environment variables.")
+            return
+            
+        # Try secure storage
+        stored_keys = self.key_manager.decrypt_keys()
+        if stored_keys:
+            self._keys = stored_keys
+            print("Using API keys from secure storage.")
+            return
+            
+        # Fallback to legacy mode and migrate
+        print("No secure keys found. Performing one-time migration...")
+        legacy_keys = json.loads(__LEGACY_KEYS_JSON__)["keys"]
+        
+        if self.key_manager.migrate_legacy_keys(legacy_keys):
+            self._keys = legacy_keys
+            print("Successfully migrated keys to secure storage.")
+        else:
+            print("Warning: Could not migrate keys. Using legacy mode.")
+            self._keys = legacy_keys
+            
+        # Remove GitHub Gist dependency (security improvement)
+        print("Security notice: GitHub Gist key fetching has been disabled for security.")
+        
+    def get_active_key(self) -> Dict[str, Any]:
+        """Get the current active key with rotation."""
+        if not self._keys:
+            return __ERROR_KEY__
+            
+        # Filter valid keys
+        valid_keys = [k for k in self._keys if k.get('valid') == 'True']
+        if not valid_keys:
+            print("Warning: No valid API keys available.")
+            return __ERROR_KEY__
+            
+        # Rotate through valid keys
+        key = self.key_manager.rotate_keys(valid_keys)
+        return key
+        
+    def get_keys_for_legacy_compatibility(self) -> List[Dict[str, Any]]:
+        """Get keys in legacy format for backward compatibility."""
+        return self._keys or []
 
 
-def getItem(index: int):
-    if index < 0 or index >= len(__API_KEYS__["keys"]):
+# Global instance for backward compatibility
+_api_key_provider = APIKeyProvider()
+
+
+# Legacy API compatibility functions
+def getNum() -> int:
+    """Get number of available keys."""
+    keys = _api_key_provider.get_keys_for_legacy_compatibility()
+    return len(keys)
+
+
+def getItem(index: int) -> Dict[str, Any]:
+    """Get key by index."""
+    keys = _api_key_provider.get_keys_for_legacy_compatibility()
+    if index < 0 or index >= len(keys):
         return __ERROR_KEY__
-    return __API_KEYS__["keys"][index]
+    return keys[index]
 
 
-def isItemValid(index: int):
+def isItemValid(index: int) -> bool:
+    """Check if key at index is valid."""
     item = getItem(index)
-    return item["valid"] == "True"
+    return item.get("valid") == "True"
 
 
-def getItems():
-    return __API_KEYS__["keys"]
+def getItems() -> List[Dict[str, Any]]:
+    """Get all keys."""
+    return _api_key_provider.get_keys_for_legacy_compatibility()
 
 
-def getLimitIndexs():
-    array = []
-    for i in range(len(__API_KEYS__["keys"])):
-        array.append(str(i))
-    return array
+def getLimitIndexs() -> List[str]:
+    """Get list of valid indices."""
+    keys = _api_key_provider.get_keys_for_legacy_compatibility()
+    return [str(i) for i in range(len(keys))]
 
 
-def getVersion():
-    return __API_KEYS__["version"]
+def getVersion() -> str:
+    """Get API version."""
+    return "1.0.1-secure"
 
 
-# Load from gist
-try:
-    respond = requests.get(
-        "https://api.github.com/gists/48d01f5a24b4b7b37f19443977c22cd6", timeout=REQUESTS_TIMEOUT_SEC
-    )
-    if respond.status_code == 200:
-        content = respond.json()["files"]["tidal-api-key.json"]["content"]
-        __API_KEYS__ = json.loads(content)
-except Exception as e:
-    # TODO: Implement proper logging.
-    print(e)
-    pass
+# New secure API functions
+def get_secure_key() -> Dict[str, Any]:
+    """Get a secure, rotated API key."""
+    return _api_key_provider.get_active_key()
+
+
+def get_secure_headers() -> Dict[str, str]:
+    """Get randomized headers for API requests."""
+    return _api_key_provider.header_manager.get_api_headers()
+
+
+def setup_secure_session() -> requests.Session:
+    """Create a secure session with randomized headers."""
+    return _api_key_provider.header_manager.get_session_with_headers()

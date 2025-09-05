@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QSizePolicy,
+    QSpacerItem,
     QSpinBox,
     QVBoxLayout,
 )
@@ -564,6 +565,98 @@ class Ui_DialogSettings:
 
         self.lv_main.addWidget(self.gb_path)
 
+        # Proxy group box
+        self.gb_proxy = QGroupBox(DialogSettings)
+        self.gb_proxy.setObjectName("gb_proxy")
+        self.verticalLayout_proxy = QVBoxLayout(self.gb_proxy)
+        self.verticalLayout_proxy.setObjectName("verticalLayout_proxy")
+        
+        # Enable proxy checkbox
+        self.horizontalLayout_proxy_enable = QHBoxLayout()
+        self.horizontalLayout_proxy_enable.setObjectName("horizontalLayout_proxy_enable")
+        self.cb_proxy_enabled = QCheckBox(self.gb_proxy)
+        self.cb_proxy_enabled.setObjectName("cb_proxy_enabled")
+        self.horizontalLayout_proxy_enable.addWidget(self.cb_proxy_enabled)
+        
+        self.horizontalSpacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        self.horizontalLayout_proxy_enable.addItem(self.horizontalSpacer)
+        self.verticalLayout_proxy.addLayout(self.horizontalLayout_proxy_enable)
+        
+        # Proxy type
+        self.horizontalLayout_proxy_type = QHBoxLayout()
+        self.horizontalLayout_proxy_type.setObjectName("horizontalLayout_proxy_type")
+        self.l_proxy_type = QLabel(self.gb_proxy)
+        self.l_proxy_type.setObjectName("l_proxy_type")
+        self.horizontalLayout_proxy_type.addWidget(self.l_proxy_type)
+        
+        self.c_proxy_type = QComboBox(self.gb_proxy)
+        self.c_proxy_type.setObjectName("c_proxy_type")
+        self.c_proxy_type.addItem("")
+        self.c_proxy_type.addItem("")
+        self.c_proxy_type.addItem("")
+        self.horizontalLayout_proxy_type.addWidget(self.c_proxy_type)
+        
+        self.horizontalSpacer_2 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        self.horizontalLayout_proxy_type.addItem(self.horizontalSpacer_2)
+        self.verticalLayout_proxy.addLayout(self.horizontalLayout_proxy_type)
+        
+        # Proxy host and port
+        self.horizontalLayout_proxy_host = QHBoxLayout()
+        self.horizontalLayout_proxy_host.setObjectName("horizontalLayout_proxy_host")
+        self.l_proxy_host = QLabel(self.gb_proxy)
+        self.l_proxy_host.setObjectName("l_proxy_host")
+        self.horizontalLayout_proxy_host.addWidget(self.l_proxy_host)
+        
+        self.le_proxy_host = QLineEdit(self.gb_proxy)
+        self.le_proxy_host.setObjectName("le_proxy_host")
+        self.horizontalLayout_proxy_host.addWidget(self.le_proxy_host)
+        
+        self.l_proxy_port = QLabel(self.gb_proxy)
+        self.l_proxy_port.setObjectName("l_proxy_port")
+        self.horizontalLayout_proxy_host.addWidget(self.l_proxy_port)
+        
+        self.sb_proxy_port = QSpinBox(self.gb_proxy)
+        self.sb_proxy_port.setObjectName("sb_proxy_port")
+        self.sb_proxy_port.setMinimum(1)
+        self.sb_proxy_port.setMaximum(65535)
+        self.sb_proxy_port.setValue(8080)
+        self.horizontalLayout_proxy_host.addWidget(self.sb_proxy_port)
+        self.verticalLayout_proxy.addLayout(self.horizontalLayout_proxy_host)
+        
+        # Proxy authentication
+        self.horizontalLayout_proxy_auth = QHBoxLayout()
+        self.horizontalLayout_proxy_auth.setObjectName("horizontalLayout_proxy_auth")
+        self.cb_proxy_use_auth = QCheckBox(self.gb_proxy)
+        self.cb_proxy_use_auth.setObjectName("cb_proxy_use_auth")
+        self.horizontalLayout_proxy_auth.addWidget(self.cb_proxy_use_auth)
+        
+        self.horizontalSpacer_3 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        self.horizontalLayout_proxy_auth.addItem(self.horizontalSpacer_3)
+        self.verticalLayout_proxy.addLayout(self.horizontalLayout_proxy_auth)
+        
+        # Proxy credentials
+        self.horizontalLayout_proxy_credentials = QHBoxLayout()
+        self.horizontalLayout_proxy_credentials.setObjectName("horizontalLayout_proxy_credentials")
+        self.l_proxy_username = QLabel(self.gb_proxy)
+        self.l_proxy_username.setObjectName("l_proxy_username")
+        self.horizontalLayout_proxy_credentials.addWidget(self.l_proxy_username)
+        
+        self.le_proxy_username = QLineEdit(self.gb_proxy)
+        self.le_proxy_username.setObjectName("le_proxy_username")
+        self.horizontalLayout_proxy_credentials.addWidget(self.le_proxy_username)
+        
+        self.l_proxy_password = QLabel(self.gb_proxy)
+        self.l_proxy_password.setObjectName("l_proxy_password")
+        self.horizontalLayout_proxy_credentials.addWidget(self.l_proxy_password)
+        
+        self.le_proxy_password = QLineEdit(self.gb_proxy)
+        self.le_proxy_password.setObjectName("le_proxy_password")
+        self.le_proxy_password.setEchoMode(QLineEdit.EchoMode.Password)
+        self.horizontalLayout_proxy_credentials.addWidget(self.le_proxy_password)
+        self.verticalLayout_proxy.addLayout(self.horizontalLayout_proxy_credentials)
+        
+        self.lv_main.addWidget(self.gb_proxy)
+
         self.bb_dialog = QDialogButtonBox(DialogSettings)
         self.bb_dialog.setObjectName("bb_dialog")
         self.bb_dialog.setOrientation(Qt.Orientation.Horizontal)
@@ -627,5 +720,19 @@ class Ui_DialogSettings:
         self.l_path_binary_ffmpeg.setText(QCoreApplication.translate("DialogSettings", "TextLabel", None))
         self.pb_download_base_path.setText(QCoreApplication.translate("DialogSettings", "...", None))
         self.pb_path_binary_ffmpeg.setText(QCoreApplication.translate("DialogSettings", "...", None))
+        
+        # Proxy translations
+        self.gb_proxy.setTitle(QCoreApplication.translate("DialogSettings", "Proxy", None))
+        self.cb_proxy_enabled.setText(QCoreApplication.translate("DialogSettings", "Enable Proxy", None))
+        self.l_proxy_type.setText(QCoreApplication.translate("DialogSettings", "Proxy Type:", None))
+        self.c_proxy_type.setItemText(0, QCoreApplication.translate("DialogSettings", "HTTP", None))
+        self.c_proxy_type.setItemText(1, QCoreApplication.translate("DialogSettings", "HTTPS", None))
+        self.c_proxy_type.setItemText(2, QCoreApplication.translate("DialogSettings", "SOCKS5", None))
+        self.l_proxy_host.setText(QCoreApplication.translate("DialogSettings", "Host:", None))
+        self.le_proxy_host.setPlaceholderText(QCoreApplication.translate("DialogSettings", "proxy.example.com or 192.168.1.1", None))
+        self.l_proxy_port.setText(QCoreApplication.translate("DialogSettings", "Port:", None))
+        self.cb_proxy_use_auth.setText(QCoreApplication.translate("DialogSettings", "Use Authentication", None))
+        self.l_proxy_username.setText(QCoreApplication.translate("DialogSettings", "Username:", None))
+        self.l_proxy_password.setText(QCoreApplication.translate("DialogSettings", "Password:", None))
 
     # retranslateUi

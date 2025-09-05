@@ -159,10 +159,13 @@ class DialogPreferences(QtWidgets.QDialog):
             "format_track",
             "format_video",
             "path_binary_ffmpeg",
+            "proxy_host",
+            "proxy_username",
+            "proxy_password",
         ]
 
     def _init_spin_box(self):
-        self.parameters_spin_box = ["album_track_num_pad_min", "downloads_concurrent_max"]
+        self.parameters_spin_box = ["album_track_num_pad_min", "downloads_concurrent_max", "proxy_port"]
 
     def _init_comboboxes(self):
         self.parameters_combo = [
@@ -184,6 +187,8 @@ class DialogPreferences(QtWidgets.QDialog):
             "skip_existing",
             "symlink_to_track",
             "playlist_create",
+            "proxy_enabled",
+            "proxy_use_auth",
         ]
 
     def gui_populate(self):
@@ -191,6 +196,7 @@ class DialogPreferences(QtWidgets.QDialog):
         self.populate_combo()
         self.populate_line_edit()
         self.populate_spin_box()
+        self.populate_proxy_settings()
 
     def dialog_chose_file(
         self,
@@ -227,7 +233,13 @@ class DialogPreferences(QtWidgets.QDialog):
             obj_line_edit.setText(str(path))
 
     def populate_line_edit(self):
+        proxy_fields = ["proxy_host", "proxy_username", "proxy_password"]
+        
         for pn in self.parameters_line_edit:
+            # Skip proxy fields as they're handled separately
+            if pn in proxy_fields:
+                continue
+                
             label_icon: QtWidgets.QLabel = getattr(self.ui, self.prefix_label + self.prefix_icon + pn)
             label: QtWidgets.QLabel = getattr(self.ui, self.prefix_label + pn)
             line_edit: QtWidgets.QLineEdit = getattr(self.ui, self.prefix_line_edit + pn)
@@ -277,6 +289,10 @@ class DialogPreferences(QtWidgets.QDialog):
 
     def populate_spin_box(self):
         for pn in self.parameters_spin_box:
+            # Skip proxy_port as it's handled separately
+            if pn == "proxy_port":
+                continue
+                
             label_icon: QtWidgets.QLabel = getattr(self.ui, self.prefix_label + self.prefix_icon + pn)
             label: QtWidgets.QLabel = getattr(self.ui, self.prefix_label + pn)
             spin_box: QtWidgets.QSpinBox = getattr(self.ui, self.prefix_spin_box + pn)
@@ -285,6 +301,44 @@ class DialogPreferences(QtWidgets.QDialog):
             label_icon.setToolTip(getattr(self.help_settings, pn))
             label.setText(pn)
             spin_box.setValue(getattr(self.data, pn))
+    
+    def populate_proxy_settings(self):
+        """Populate proxy-specific settings."""
+        # Proxy line edits
+        self.ui.le_proxy_host.setText(str(getattr(self.data, "proxy_host")))
+        self.ui.le_proxy_username.setText(str(getattr(self.data, "proxy_username")))
+        self.ui.le_proxy_password.setText(str(getattr(self.data, "proxy_password")))
+        
+        # Proxy port spin box
+        self.ui.sb_proxy_port.setValue(getattr(self.data, "proxy_port"))
+        
+        # Proxy type combo box
+        proxy_type = getattr(self.data, "proxy_type")
+        index = self.ui.c_proxy_type.findText(proxy_type)
+        if index >= 0:
+            self.ui.c_proxy_type.setCurrentIndex(index)
+            
+        # Connect signals to enable/disable proxy fields based on checkbox
+        self.ui.cb_proxy_enabled.toggled.connect(self.on_proxy_enabled_toggled)
+        self.ui.cb_proxy_use_auth.toggled.connect(self.on_proxy_auth_toggled)
+        
+        # Initial state
+        self.on_proxy_enabled_toggled(self.ui.cb_proxy_enabled.isChecked())
+        self.on_proxy_auth_toggled(self.ui.cb_proxy_use_auth.isChecked())
+        
+    def on_proxy_enabled_toggled(self, checked: bool):
+        """Enable/disable proxy fields based on proxy_enabled checkbox."""
+        self.ui.c_proxy_type.setEnabled(checked)
+        self.ui.le_proxy_host.setEnabled(checked)
+        self.ui.sb_proxy_port.setEnabled(checked)
+        self.ui.cb_proxy_use_auth.setEnabled(checked)
+        self.on_proxy_auth_toggled(self.ui.cb_proxy_use_auth.isChecked() and checked)
+        
+    def on_proxy_auth_toggled(self, checked: bool):
+        """Enable/disable authentication fields based on proxy_use_auth checkbox."""
+        enabled = checked and self.ui.cb_proxy_enabled.isChecked()
+        self.ui.le_proxy_username.setEnabled(enabled)
+        self.ui.le_proxy_password.setEnabled(enabled)
 
     def accept(self):
         # Get settings.

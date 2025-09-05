@@ -70,7 +70,18 @@ def latest_version_information() -> ReleaseLatest:
     url: str = f"https://api.github.com/repos{repo_path}/releases/latest"
 
     try:
-        response = requests.get(url, timeout=REQUESTS_TIMEOUT_SEC)
+        # Import inside function to avoid circular imports
+        from tidal_dl_ng.config import Settings
+        from tidal_dl_ng.security.proxy_manager import ProxyManager
+        
+        # Set up proxy for version check
+        settings = Settings()
+        proxy_manager = ProxyManager(settings)
+        request_kwargs = {'timeout': REQUESTS_TIMEOUT_SEC}
+        if proxy_manager:
+            request_kwargs.update(proxy_manager.get_request_kwargs())
+        
+        response = requests.get(url, **request_kwargs)
         release_info: str = response.json()
 
         release_info = ReleaseLatest(

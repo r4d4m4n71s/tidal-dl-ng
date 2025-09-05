@@ -10,8 +10,9 @@ classifiers = [
   "License :: OSI Approved :: GNU Affero General Public License v3",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
 ]
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.12,<3.14"
 dynamic = ["dependencies"]
 
 [project.urls]
@@ -42,6 +43,8 @@ typer = "^0.16.0"
 tidalapi = "^0.8.3"
 python-ffmpeg = "^2.0.12"
 pycryptodome = "^3.23.0"
+numpy = "^2.0.0"
+cryptography = "^44.0.0"
 
 [project.optional-dependencies]
 gui = ["pyside6", "pyqtdarktheme-fork"]
@@ -84,7 +87,7 @@ build-backend = "poetry.core.masonry.api"
 testpaths = ["tests"]
 
 [tool.ruff]
-target-version = "py312"
+target-version = "py313"
 line-length = 120
 fix = true
 # Overview: https://docs.astral.sh/ruff/rules/
@@ -139,7 +142,7 @@ ignore = [
 
 [tool.black]
 # https://github.com/psf/black
-target-version = ["py312"]
+target-version = ["py312", "py313"]
 line-length = 120
 color = true
 preview = true
@@ -165,7 +168,7 @@ exclude = '''
 
 [tool.isort]
 # https://github.com/timothycrosley/isort/
-py_version = 312
+py_version = 313
 line_length = 120
 known_typing = [
   "typing",
@@ -206,7 +209,7 @@ known_third_party = [
 [tool.mypy]
 # https://mypy.readthedocs.io/en/latest/config_file.html#using-a-pyproject-toml-file
 files = ["tidal_dl_ng"]
-python_version = "3.12"
+python_version = "3.13"
 pretty = true
 show_traceback = true
 color_output = true

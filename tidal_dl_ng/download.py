@@ -60,12 +60,24 @@ from tidal_dl_ng.helper.tidal import (
 from tidal_dl_ng.metadata import Metadata
 from tidal_dl_ng.model.downloader import DownloadSegmentResult
 from tidal_dl_ng.model.gui_data import ProgressBars
+from tidal_dl_ng.security.request_obfuscator import RequestObfuscator
+from tidal_dl_ng.security.header_manager import HeaderManager
+from tidal_dl_ng.security.metadata_obfuscator import MetadataObfuscator
+from tidal_dl_ng.security.proxy_manager import ProxyManager
 
 
 # TODO: Set appropriate client string and use it for video download.
 # https://github.com/globocom/m3u8#using-different-http-clients
 class RequestsClient:
     """HTTP client for downloading text content from a URI."""
+
+    def __init__(self, proxy_manager: ProxyManager | None = None):
+        """Initialize the RequestsClient.
+        
+        Args:
+            proxy_manager: ProxyManager instance for proxy configuration.
+        """
+        self.proxy_manager = proxy_manager
 
     def download(
         self, uri: str, timeout: int = REQUESTS_TIMEOUT_SEC, headers: dict | None = None, verify_ssl: bool = True
@@ -84,7 +96,12 @@ class RequestsClient:
         if not headers:
             headers = {}
 
-        o = requests.get(uri, timeout=timeout, headers=headers)
+        # Get proxy settings
+        request_kwargs = {'timeout': timeout, 'headers': headers}
+        if self.proxy_manager:
+            request_kwargs.update(self.proxy_manager.get_request_kwargs())
+
+        o = requests.get(uri, **request_kwargs)
 
         return o.text, o.url
 
@@ -139,6 +156,13 @@ class Download:
         self.event_abort = event_abort
         self.event_run = event_run
 
+        # Initialize security components
+        self.request_obfuscator = RequestObfuscator()
+        self.header_manager = HeaderManager()
+        self.metadata_obfuscator = MetadataObfuscator()
+        self.proxy_manager = ProxyManager(self.settings)
+        self.failure_count = 0
+
         if not self.settings.data.path_binary_ffmpeg and (
             self.settings.data.video_convert_mp4 or self.settings.data.extract_flac
         ):
@@ -170,7 +194,9 @@ class Download:
             return stream_manifest.get_urls()
         elif isinstance(media, Video):
             quality_video = self.settings.data.quality_video
-            m3u8_variant: m3u8.M3U8 = m3u8.load(media.get_url())
+            # Create RequestsClient with proxy support for m3u8 loading
+            http_client = RequestsClient(proxy_manager=self.proxy_manager)
+            m3u8_variant: m3u8.M3U8 = m3u8.load(media.get_url(), http_client=http_client)
             # Find the desired video resolution or the next best one.
             m3u8_playlist, _ = self._extract_video_stream(m3u8_variant, int(quality_video))
 
@@ -205,7 +231,11 @@ class Download:
         elif urls_count == 1:
             try:
                 # Get file size and compute progress steps
-                r = requests.head(urls[0], timeout=REQUESTS_TIMEOUT_SEC)
+                request_kwargs = {'timeout': REQUESTS_TIMEOUT_SEC}
+                if self.proxy_manager:
+                    request_kwargs.update(self.proxy_manager.get_request_kwargs())
+                
+                r = requests.head(urls[0], **request_kwargs)
 
                 total_size_in_bytes: int = int(r.headers.get("content-length", 0))
                 block_size = 1048576
@@ -438,6 +468,14 @@ class Download:
             retries = Retry(total=5, backoff_factor=1)  # , status_forcelist=[ 502, 503, 504 ])
 
             s.mount("https://", HTTPAdapter(max_retries=retries))
+
+            # Apply proxy settings to session
+            if self.proxy_manager:
+                proxy_kwargs = self.proxy_manager.get_request_kwargs()
+                if 'proxies' in proxy_kwargs:
+                    s.proxies.update(proxy_kwargs['proxies'])
+                if 'verify' in proxy_kwargs:
+                    s.verify = proxy_kwargs['verify']
 
             try:
                 # Create the request object with stream=True, so the content won't be loaded into memory at once.
@@ -919,17 +957,50 @@ class Download:
         if quality_video_old is not None:
             self.adjust_quality_video(quality_video_old)
 
-        # Apply download delay if needed
+        # Apply download delay if needed with enhanced security obfuscation
         if (download_delay and not skip_file) and not self.event_abort.is_set():
-            time_sleep: float = round(
-                random.SystemRandom().uniform(
-                    self.settings.data.download_delay_sec_min, self.settings.data.download_delay_sec_max
-                ),
-                1,
+            # Use enhanced delay patterns from security module
+            time_sleep = self.request_obfuscator.get_dynamic_delay(
+                self.settings.data.download_delay_sec_min,
+                self.settings.data.download_delay_sec_max
             )
-
+            
+            # Check for session pause (simulating user breaks)
+            should_pause, pause_duration = self.request_obfuscator.should_pause_session()
+            if should_pause:
+                self.fn_logger.debug(f"Simulating user break: pausing for {pause_duration:.1f} seconds.")
+                self._perform_session_pause(pause_duration)
+            
             self.fn_logger.debug(f"Next download will start in {time_sleep} seconds.")
-            time.sleep(time_sleep)
+            
+            # Enhanced delay with micro-pauses to simulate human interaction
+            remaining_sleep = time_sleep
+            while remaining_sleep > 0 and not self.event_abort.is_set():
+                pause = min(0.5, remaining_sleep)
+                time.sleep(pause)
+                remaining_sleep -= pause
+                
+                # Occasionally add extra micro-delays (simulating UI interaction)
+                if random.random() < 0.1:
+                    interaction_delay = self.request_obfuscator.simulate_user_interaction_delay()
+                    if interaction_delay < 2.0:  # Only short interactions during downloads
+                        time.sleep(interaction_delay)
+                        
+            # Update request history for pattern analysis
+            self.request_obfuscator.update_request_history(time.time())
+    
+    def _perform_session_pause(self, pause_duration: float) -> None:
+        """Perform a session pause to simulate user breaks.
+        
+        Args:
+            pause_duration: Duration to pause in seconds
+        """
+        # Break pause into smaller chunks to allow for early termination
+        remaining_pause = pause_duration
+        while remaining_pause > 0 and not self.event_abort.is_set():
+            chunk_pause = min(1.0, remaining_pause)  # Pause in 1-second chunks
+            time.sleep(chunk_pause)
+            remaining_pause -= chunk_pause
 
     def media_move_and_symlink(
         self, media: Track | Video, path_media_src: pathlib.Path, file_extension: str
@@ -1106,8 +1177,7 @@ class Download:
 
         return result
 
-    @staticmethod
-    def cover_data(url: str | None = None, path_file: str | None = None) -> str | bytes:
+    def cover_data(self, url: str | None = None, path_file: str | None = None) -> str | bytes:
         """Retrieve cover image data from a URL or file.
 
         Args:
@@ -1121,7 +1191,12 @@ class Download:
 
         if url:
             try:
-                response: requests.Response = requests.get(url, timeout=REQUESTS_TIMEOUT_SEC)
+                # Get proxy settings
+                request_kwargs = {'timeout': REQUESTS_TIMEOUT_SEC}
+                if self.proxy_manager:
+                    request_kwargs.update(self.proxy_manager.get_request_kwargs())
+                
+                response: requests.Response = requests.get(url, **request_kwargs)
                 result = response.content
             except Exception as e:
                 # TODO: Implement propper logging.
@@ -1579,10 +1654,13 @@ class Download:
         mime_type: str = ""
 
         if m3u8_variant.is_variant:
+            # Create RequestsClient with proxy support for m3u8 loading
+            http_client = RequestsClient(proxy_manager=self.proxy_manager)
+            
             for playlist in m3u8_variant.playlists:
                 if resolution_best < playlist.stream_info.resolution[1]:
                     resolution_best = playlist.stream_info.resolution[1]
-                    m3u8_playlist = m3u8.load(playlist.uri)
+                    m3u8_playlist = m3u8.load(playlist.uri, http_client=http_client)
                     mime_type = playlist.stream_info.codecs
 
                     if quality == playlist.stream_info.resolution[1]:

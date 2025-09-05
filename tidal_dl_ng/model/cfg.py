@@ -45,6 +45,14 @@ class Settings:
     symlink_to_track: bool = False
     playlist_create: bool = False
     metadata_replay_gain: bool = True
+    # Proxy settings
+    proxy_enabled: bool = False
+    proxy_type: str = "HTTP"  # HTTP, HTTPS, SOCKS5
+    proxy_host: str = ""
+    proxy_port: int = 8080
+    proxy_username: str = ""
+    proxy_password: str = ""
+    proxy_use_auth: bool = False
 
 
 @dataclass_json
@@ -99,6 +107,14 @@ class HelpSettings:
     )
     playlist_create: str = "Creates a '_playlist.m3u8' file for downloaded albums, playlists and mixes."
     metadata_replay_gain: str = "Replay gain information will be written to metadata."
+    # Proxy help settings
+    proxy_enabled: str = "Enable proxy for all network connections."
+    proxy_type: str = "Type of proxy server: HTTP, HTTPS, or SOCKS5."
+    proxy_host: str = "Proxy server hostname or IP address."
+    proxy_port: str = "Proxy server port number."
+    proxy_username: str = "Username for proxy authentication (if required)."
+    proxy_password: str = "Password for proxy authentication (if required)."
+    proxy_use_auth: str = "Enable authentication for proxy server."
 
 
 @dataclass_json
