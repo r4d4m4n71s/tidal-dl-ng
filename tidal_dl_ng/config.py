@@ -5,7 +5,7 @@ from collections.abc import Callable
 from json import JSONDecodeError
 from pathlib import Path
 from threading import Event
-from typing import Any
+from typing import Any, Optional
 
 import tidalapi
 from requests import HTTPError
@@ -14,6 +14,11 @@ from tidal_dl_ng.helper.decorator import SingletonMeta
 from tidal_dl_ng.helper.path import path_config_base, path_file_settings, path_file_token
 from tidal_dl_ng.model.cfg import Settings as ModelSettings
 from tidal_dl_ng.model.cfg import Token as ModelToken
+from tidal_dl_ng.model.cfg import ProxyConfig, ProxySettings
+from tidal_dl_ng.proxy import ProxyManager
+from tidal_dl_ng.auth_server import LocalAuthServer
+from tidal_dl_ng.enhanced_session import EnhancedTidalSession, create_enhanced_tidal_session
+from tidal_dl_ng.tidal_proxy_integration import TidalProxyIntegration
 
 
 class BaseConfig:
@@ -89,23 +94,34 @@ class Settings(BaseConfig, metaclass=SingletonMeta):
 
 
 class Tidal(BaseConfig, metaclass=SingletonMeta):
-    session: tidalapi.Session
+    session: EnhancedTidalSession
     token_from_storage: bool = False
     settings: Settings
     is_pkce: bool
+    proxy_manager: Optional[ProxyManager] = None
+    auth_server: Optional[LocalAuthServer] = None
+    tidal_integration: Optional[TidalProxyIntegration] = None
 
     def __init__(self, settings: Settings = None):
         self.cls_model = ModelToken
-        tidal_config: tidalapi.Config = tidalapi.Config(item_limit=10000)
-        self.session = tidalapi.Session(tidal_config)
-        # self.session.config.client_id = "km8T1xS355y7dd3H"
-        # self.session.config.client_secret = "vcmeGW1OuZ0fWYMCSZ6vNvSLJlT3XEpW0ambgYt5ZuI="
         self.file_path = path_file_token()
         self.token_from_storage = self.read(self.file_path)
 
         if settings:
             self.settings = settings
+            # Create proxy-enhanced session using the integration layer
+            self.session = create_enhanced_tidal_session(
+                settings=settings,
+                quality=settings.data.quality_audio,
+                video_quality=tidalapi.VideoQuality.high
+            )
+            self.tidal_integration = TidalProxyIntegration(settings)
             self.settings_apply()
+            self._init_proxy_manager()
+        else:
+            # Fallback to standard session if no settings provided
+            tidal_config: tidalapi.Config = tidalapi.Config(item_limit=10000)
+            self.session = EnhancedTidalSession(tidal_config)
 
     def settings_apply(self, settings: Settings = None) -> bool:
         if settings:
@@ -158,32 +174,90 @@ class Tidal(BaseConfig, metaclass=SingletonMeta):
         self.save()
 
     def login(self, fn_print: Callable) -> bool:
+        """Enhanced login method with comprehensive proxy and local server support."""
         is_token = self.login_token()
         result = False
 
         if is_token:
             fn_print("Yep, looks good! You are logged in.")
-
             result = True
         elif not is_token:
             fn_print("You either do not have a token or your token is invalid.")
             fn_print("No worries, we will handle this...")
-            # Login method: Device linking
-            self.session.login_oauth_simple(fn_print)
-            # Login method: PKCE authorization (was necessary for HI_RES_LOSSLESS streaming earlier)
-            # self.session.login_pkce(fn_print)
-
-            is_login = self.login_finalize()
-
-            if is_login:
-                fn_print("The login was successful. I have stored your credentials (token).")
-
-                result = True
+            
+            # Priority 1: Use local server authentication if available and enabled
+            if (self.auth_server and 
+                self.settings.data.auth_settings.use_local_server and 
+                self.proxy_manager and 
+                self.proxy_manager.settings.enabled):
+                
+                fn_print("Using local server authentication with proxy...")
+                success, error = self.auth_server.authenticate_with_tidal(self.session)
+                
+                if success:
+                    result = self.login_finalize()
+                    if result:
+                        fn_print("The login was successful. I have stored your credentials (token).")
+                    else:
+                        fn_print("Token validation failed after authentication.")
+                else:
+                    fn_print(f"Local server authentication failed: {error}")
+                    # Fallback to proxy-enhanced device linking
+                    fn_print("Falling back to proxy-enhanced device linking...")
+                    result = self._perform_device_linking(fn_print)
+            
+            # Priority 2: Use proxy-enhanced device linking if proxy is available
+            elif self.session.proxy_manager:
+                fn_print("Using proxy-enhanced authentication...")
+                result = self._perform_device_linking(fn_print)
+            
+            # Priority 3: Use standard device linking as fallback
             else:
-                fn_print("Something went wrong. Did you login using your browser correctly? May try again...")
+                fn_print("Using standard authentication...")
+                result = self._perform_device_linking(fn_print)
 
         return result
 
+    def _perform_device_linking(self, fn_print: Callable) -> bool:
+        """Perform device linking authentication with proxy support if available."""
+        # Use proxy-aware login if proxy manager is available
+        if self.session.proxy_manager:
+            self.session.login_oauth_simple_with_proxy(fn_print)
+        else:
+            # Traditional device linking method
+            self.session.login_oauth_simple(fn_print)
+        
+        # Alternative: PKCE authorization (was necessary for HI_RES_LOSSLESS streaming earlier)
+        # if self.session.proxy_manager:
+        #     self.session.login_pkce_with_proxy(fn_print)
+        # else:
+        #     self.session.login_pkce(fn_print)
+
+        is_login = self.login_finalize()
+
+        if is_login:
+            fn_print("The login was successful. I have stored your credentials (token).")
+            return True
+        else:
+            fn_print("Something went wrong. Did you login using your browser correctly? May try again...")
+            return False
+
+    def _init_proxy_manager(self):
+        """Initialize proxy manager from settings."""
+        if self.settings and self.settings.data.proxy_settings.enabled:
+            # Use the proxy settings directly since they're already compatible
+            self.proxy_manager = ProxyManager(self.settings.data.proxy_settings)
+            
+            # Initialize auth server if local server auth is enabled
+            if self.settings.data.auth_settings.use_local_server:
+                self.auth_server = LocalAuthServer(self.proxy_manager, self.settings.data.auth_settings)
+            
+            print(f"Proxy manager initialized with {len(self.settings.data.proxy_settings.proxies)} proxy(ies)")
+        else:
+            print("Proxy not enabled or no proxies configured")
+
+
+    
     def logout(self):
         Path(self.file_path).unlink(missing_ok=True)
         self.token_from_storage = False

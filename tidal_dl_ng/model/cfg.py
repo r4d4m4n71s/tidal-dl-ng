@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import List, Optional
 
 from dataclasses_json import dataclass_json
 from tidalapi import Quality
@@ -45,6 +46,9 @@ class Settings:
     symlink_to_track: bool = False
     playlist_create: bool = False
     metadata_replay_gain: bool = True
+    # Proxy and authentication settings
+    proxy_settings: "ProxySettings" = field(default_factory=lambda: ProxySettings())
+    auth_settings: "AuthSettings" = field(default_factory=lambda: AuthSettings())
 
 
 @dataclass_json
@@ -99,6 +103,50 @@ class HelpSettings:
     )
     playlist_create: str = "Creates a '_playlist.m3u8' file for downloaded albums, playlists and mixes."
     metadata_replay_gain: str = "Replay gain information will be written to metadata."
+
+
+# Import proxy classes from the proxy module to avoid duplication
+# This ensures we use the same classes with all their methods
+try:
+    from tidal_dl_ng.proxy import ProxyConfig, ProxySettings
+except ImportError:
+    # Fallback definitions if proxy module is not available
+    @dataclass_json
+    @dataclass
+    class ProxyConfig:
+        """Configuration for a single proxy server."""
+        name: str = ""
+        host: str = ""
+        port: int = 0
+        proxy_type: str = "https"  # http, https, socks5
+        username: Optional[str] = None
+        password: Optional[str] = None
+        protocols: List[str] = field(default_factory=lambda: ["http", "https"])
+        enabled: bool = True
+        priority: int = 1  # Lower number = higher priority
+
+    @dataclass_json
+    @dataclass
+    class ProxySettings:
+        """Global proxy settings configuration."""
+        enabled: bool = False
+        proxies: List[ProxyConfig] = field(default_factory=list)
+        auto_failover: bool = True
+        test_timeout: int = 10
+        health_check_interval: int = 300  # 5 minutes
+        max_retries: int = 3
+        retry_backoff_factor: float = 1.0
+
+
+@dataclass_json
+@dataclass
+class AuthSettings:
+    """Authentication settings configuration."""
+    use_local_server: bool = True
+    local_server_port: int = 8080
+    local_server_host: str = "127.0.0.1"
+    browser_auto_open: bool = True
+    auth_timeout: int = 300  # 5 minutes
 
 
 @dataclass_json

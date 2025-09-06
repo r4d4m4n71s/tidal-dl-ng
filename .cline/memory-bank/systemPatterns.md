@@ -2,17 +2,21 @@
 
 ## Architecture Overview
 
-TIDAL-dl-ng follows a modular Python architecture with clear separation of concerns between CLI, GUI, core business logic, and supporting utilities.
+TIDAL-dl-ng follows a modular Python architecture with clear separation of concerns between CLI, GUI, core business logic, and supporting utilities. Recent refactoring has improved module organization and eliminated code duplication.
 
 ```
 tidal_dl_ng/
 ├── cli.py              # Command-line interface entry point
 ├── gui.py              # GUI application entry point
 ├── api.py              # TIDAL API interaction layer
-├── config.py           # Configuration management
+├── config.py           # Configuration management (cleaned up)
+├── enhanced_session.py # Enhanced TIDAL session with proxy integration
+├── proxy.py            # Proxy management and connectivity (consolidated)
 ├── download.py         # Core download logic
 ├── metadata.py         # Metadata extraction/processing
 ├── worker.py           # Background task management
+├── auth_server.py      # OAuth authentication server
+├── tidal_proxy_integration.py # Proxy integration utilities
 ├── helper/             # Utility modules
 ├── model/              # Data models and structures
 ├── ui/                 # GUI components and resources
@@ -42,10 +46,22 @@ tidal_dl_ng/
 ### 4. Configuration Management Pattern
 - **Implementation**: Centralized configuration handling
 - **Features**: TOML-based configuration, runtime setting management
-- **Location**: `config.py`
+- **Location**: `config.py` (recently cleaned up, proxy methods moved to proxy.py)
 - **Pattern Benefits**: Single source of truth for application settings
 
-### 5. API Wrapper Pattern
+### 5. Enhanced Session Pattern (Recently Refactored)
+- **Implementation**: EnhancedTidalSession class (renamed from ProxyEnhancedTidalSession)
+- **Purpose**: Seamless integration of TIDAL API with proxy functionality
+- **Location**: `enhanced_session.py`
+- **Pattern Benefits**: Clean separation between session management and proxy operations
+
+### 6. Proxy Management Pattern (Recently Consolidated)
+- **Implementation**: ProxyManager class with comprehensive functionality
+- **Features**: Proxy connectivity testing, status monitoring, location reporting
+- **Location**: `proxy.py` (consolidated from multiple locations)
+- **Pattern Benefits**: Single responsibility for all proxy-related operations
+
+### 7. API Wrapper Pattern
 - **Implementation**: Abstraction layer over TIDAL API
 - **Purpose**: Handles authentication, API calls, error handling
 - **Location**: `api.py`
@@ -53,28 +69,45 @@ tidal_dl_ng/
 
 ## Component Relationships
 
-### Core Flow Architecture
+### Core Flow Architecture (Updated with Recent Changes)
 ```
-User Input (CLI/GUI) → Configuration → API Layer → Download Engine → Worker Threads → File Output
-                                                        ↓
-                                                   Metadata Processing
+User Input (CLI/GUI) → Configuration → Enhanced Session → API Layer → Download Engine → Worker Threads → File Output
+                                            ↓                              ↓
+                                       Proxy Manager                 Metadata Processing
 ```
 
-### Dependency Hierarchy
+### Dependency Hierarchy (Post-Refactoring)
 1. **Entry Points** (`cli.py`, `gui.py`) depend on:
-2. **Core Logic** (`download.py`, `api.py`) depends on:
-3. **Data Models** (`model/`) and **Helpers** (`helper/`)
-4. **External Libraries** (tidalapi, requests, mutagen, etc.)
+2. **Core Logic** (`download.py`, `api.py`, `enhanced_session.py`) depends on:
+3. **Supporting Services** (`proxy.py`, `auth_server.py`, `config.py`) depends on:
+4. **Data Models** (`model/`) and **Helpers** (`helper/`)
+5. **External Libraries** (tidalapi, requests, mutagen, etc.)
+
+### Recent Architectural Improvements
+- **Proxy Method Consolidation**: All proxy operations now centralized in ProxyManager
+- **Class Renaming**: EnhancedTidalSession provides clearer naming without proxy prefix
+- **Method Delegation**: Enhanced session delegates proxy operations to dedicated manager
+- **Code Deduplication**: Eliminated duplicate methods between config.py and proxy.py
 
 ## Critical Implementation Paths
 
-### Download Workflow
-1. **Authentication**: User credentials → TIDAL API authentication
-2. **Content Resolution**: URL/ID → TIDAL content metadata
-3. **Quality Selection**: User preferences → optimal available quality
-4. **Download Execution**: Multithreaded/chunked download
-5. **Metadata Processing**: Extract/embed metadata, lyrics, artwork
-6. **File Organization**: Apply naming patterns, create playlists
+### Download Workflow (Enhanced with Proxy Support)
+1. **Authentication**: Multiple methods supported
+   - Token-based authentication for existing sessions
+   - LocalAuthServer for complete OAuth 2.0 flow
+   - Device linking with proxy support
+2. **Proxy Integration**: ProxyManager handles location masking and connectivity
+3. **Content Resolution**: URL/ID → TIDAL content metadata (via EnhancedTidalSession)
+4. **Quality Selection**: User preferences → optimal available quality
+5. **Download Execution**: Multithreaded/chunked download with proxy support
+6. **Metadata Processing**: Extract/embed metadata, lyrics, artwork
+7. **File Organization**: Apply naming patterns, create playlists
+
+### Authentication Flow (Recently Analyzed)
+1. **Priority System**: Token → LocalAuthServer → Device Linking → Standard fallback
+2. **Session Management**: EnhancedTidalSession maintains authentication state
+3. **Proxy Integration**: Seamless proxy support across all authentication methods
+4. **Error Handling**: Graceful fallback between authentication methods
 
 ### GUI Integration
 1. **Qt Designer Workflow**: `.ui` files → `pyside6-uic` → Python modules
@@ -90,10 +123,19 @@ User Input (CLI/GUI) → Configuration → API Layer → Download Engine → Wor
 
 ## Data Flow Patterns
 
-### Configuration Flow
+### Configuration Flow (Recently Improved)
 - **Sources**: Default values → Config files → CLI arguments → Runtime changes
 - **Persistence**: TOML format for human-readable configuration
 - **Access Pattern**: Global configuration object accessible throughout application
+- **Proxy Configuration**: Centralized in ProxyManager, accessed via delegation
+- **Authentication Settings**: Multiple authentication method configurations supported
+
+### Enhanced Session Data Flow (New Pattern)
+```
+Authentication Request → EnhancedTidalSession → ProxyManager → TIDAL API → Response Processing
+                                ↓
+                         Session State Management
+```
 
 ### Download Data Flow
 ```
@@ -109,7 +151,9 @@ TIDAL URL → API Resolution → Media URLs → Chunked Downloads → File Assem
 ## Integration Points
 
 ### External Service Integration
-- **TIDAL API**: Primary content source via tidalapi library
+- **TIDAL API**: Primary content source via tidalapi library with enhanced session management
+- **Proxy Services**: Integration with proxy providers for location masking
+- **OAuth Providers**: Local HTTP server for OAuth callback handling
 - **FFmpeg**: Media processing (when `extract_flac` enabled)
 - **File System**: Cross-platform path handling via pathvalidate
 
@@ -117,6 +161,8 @@ TIDAL URL → API Resolution → Media URLs → Chunked Downloads → File Assem
 - **Core Dependencies**: Minimal, well-established libraries
 - **Optional Dependencies**: GUI components as optional extras
 - **Version Pinning**: Specific versions to ensure stability
+- **Proxy Libraries**: Integrated proxy support without additional dependencies
+- **Authentication Libraries**: OAuth 2.0 support with local server capabilities
 
 ## Performance Patterns
 
@@ -132,10 +178,17 @@ TIDAL URL → API Resolution → Media URLs → Chunked Downloads → File Assem
 
 ## Security Considerations
 
-### Credential Management
+### Credential Management (Enhanced)
 - **No Plain Text Storage**: Credentials handled through TIDAL's authentication
-- **Session Management**: Proper session handling and expiration
+- **Multiple Auth Methods**: Secure handling of different authentication flows
+- **Session Management**: Proper session handling and expiration via EnhancedTidalSession
 - **API Key Protection**: Secure handling of TIDAL API interactions
+- **OAuth Security**: Local server with proper callback handling and state validation
+
+### Network Security
+- **Proxy Security**: Secure proxy configuration and connection handling
+- **TLS/SSL**: Encrypted connections for all API communications
+- **Request Validation**: Proper validation of API responses and proxy status
 
 ### File System Security
 - **Path Validation**: Prevent directory traversal attacks
