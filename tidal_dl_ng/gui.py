@@ -49,11 +49,9 @@ import sys
 import time
 from collections.abc import Callable, Sequence
 
-from requests.exceptions import HTTPError
-from tidalapi.session import LinkLogin
-
 from tidal_dl_ng import __version__, update_available
-from tidal_dl_ng.dialog import DialogLogin, DialogPreferences, DialogVersion
+from tidal_dl_ng.dialog import DialogPreferences, DialogProxyConfig, DialogVersion
+from tidal_dl_ng.auth.authentication_manager import AuthenticationManager
 from tidal_dl_ng.helper.gui import (
     FilterHeader,
     HumanProxyModel,
@@ -167,44 +165,33 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         logger_gui.debug("All setup.")
 
     def init_tidal(self, tidal: Tidal = None):
+        """Initialize TIDAL session with transparent authentication and lazy proxy configuration."""
         result: bool = False
 
         if tidal:
             self.tidal = tidal
             result = True
         else:
-            self.tidal = Tidal(self.settings)
-            result = self.tidal.login_token()
-
-            if not result:
-                hint: str = "After you have finished the TIDAL login via web browser click the 'OK' button."
-
-                while not result:
-                    link_login: LinkLogin = self.tidal.session.get_link_login()
-                    d_login: DialogLogin = DialogLogin(
-                        url_login=link_login.verification_uri_complete,
-                        hint=hint,
-                        expires_in=link_login.expires_in,
-                        parent=self,
-                    )
-
-                    if d_login.return_code == 1:
-                        try:
-                            self.tidal.session.process_link_login(link_login, until_expiry=False)
-                            self.tidal.login_finalize()
-
-                            result = True
-                            logger_gui.info("Login successful. Have fun!")
-                        except (HTTPError, Exception):
-                            hint = "Something was wrong with your redirect url. Please try again!"
-                            logger_gui.warning("Login not successful. Try again...")
-                    else:
-                        # If user has pressed cancel.
-                        sys.exit(1)
+            try:
+                # Use AuthenticationManager for transparent authentication
+                auth_manager = AuthenticationManager(self.settings, parent=self)
+                
+                if auth_manager.authenticate():
+                    self.tidal = auth_manager.get_tidal_instance()
+                    result = True
+                    logger_gui.info("TIDAL authentication successful!")
+                else:
+                    logger_gui.error("TIDAL authentication failed.")
+                    sys.exit(1)
+                    
+            except Exception as e:
+                logger_gui.error(f"Error during TIDAL initialization: {str(e)}")
+                sys.exit(1)
 
         if result:
             self._init_dl()
             self.thread_it(self.tidal_user_lists)
+
 
     def _init_threads(self):
         self.threadpool = QtCore.QThreadPool()

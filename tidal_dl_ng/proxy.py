@@ -26,102 +26,85 @@ from tidal_dl_ng.constants import REQUESTS_TIMEOUT_SEC
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class ProxyConfig:
-    """Configuration for a single proxy server."""
-    name: str
-    host: str
-    port: int
-    proxy_type: str  # http, https, socks5
-    username: Optional[str] = None
-    password: Optional[str] = None
-    protocols: List[str] = field(default_factory=lambda: ["http", "https"])
-    enabled: bool = True
-    priority: int = 1  # Lower number = higher priority
+# Import proxy configuration classes from model to avoid circular imports
+from tidal_dl_ng.model.cfg import ProxyConfig, ProxySettings
+
+# Add methods to ProxyConfig class
+def _proxy_config_post_init(self):
+    """Validate proxy configuration after initialization."""
+    if self.proxy_type.lower() not in ['http', 'https', 'socks5']:
+        raise ValueError(f"Unsupported proxy type: {self.proxy_type}")
     
-    def __post_init__(self):
-        """Validate proxy configuration after initialization."""
-        if self.proxy_type.lower() not in ['http', 'https', 'socks5']:
-            raise ValueError(f"Unsupported proxy type: {self.proxy_type}")
+    if not self.host or not self.port:
+        raise ValueError("Host and port are required")
         
-        if not self.host or not self.port:
-            raise ValueError("Host and port are required")
+    if self.port < 1 or self.port > 65535:
+        raise ValueError("Port must be between 1 and 65535")
+
+def _proxy_config_proxy_url(self) -> str:
+    """Generate proxy URL with authentication."""
+    if self.username and self.password:
+        # URL encode username and password to handle special characters
+        username = urllib.parse.quote(self.username, safe='')
+        password = urllib.parse.quote(self.password, safe='')
+        return f"{self.proxy_type}://{username}:{password}@{self.host}:{self.port}"
+    else:
+        return f"{self.proxy_type}://{self.host}:{self.port}"
+
+def _proxy_config_proxy_dict(self) -> Dict[str, str]:
+    """Generate proxy dictionary for requests library."""
+    proxy_url = self.proxy_url
+    proxy_dict = {}
+    
+    for protocol in self.protocols:
+        proxy_dict[protocol] = proxy_url
+        
+    return proxy_dict
+
+def _proxy_config_test_connection(self, timeout: int = 10) -> Tuple[bool, float, Optional[str]]:
+    """
+    Test proxy connection and measure latency.
+    
+    Returns:
+        Tuple of (success, latency_ms, error_message)
+    """
+    test_urls = [
+        "https://httpbin.org/ip",
+        "https://api.ipify.org?format=json",
+        "https://ifconfig.me/ip"
+    ]
+    
+    for test_url in test_urls:
+        try:
+            start_time = time.time()
             
-        if self.port < 1 or self.port > 65535:
-            raise ValueError("Port must be between 1 and 65535")
-
-    @property
-    def proxy_url(self) -> str:
-        """Generate proxy URL with authentication."""
-        if self.username and self.password:
-            # URL encode username and password to handle special characters
-            username = urllib.parse.quote(self.username, safe='')
-            password = urllib.parse.quote(self.password, safe='')
-            return f"{self.proxy_type}://{username}:{password}@{self.host}:{self.port}"
-        else:
-            return f"{self.proxy_type}://{self.host}:{self.port}"
-
-    @property
-    def proxy_dict(self) -> Dict[str, str]:
-        """Generate proxy dictionary for requests library."""
-        proxy_url = self.proxy_url
-        proxy_dict = {}
-        
-        for protocol in self.protocols:
-            proxy_dict[protocol] = proxy_url
+            session = requests.Session()
+            session.proxies.update(self.proxy_dict)
             
-        return proxy_dict
+            if self.username and self.password:
+                session.auth = HTTPProxyAuth(self.username, self.password)
+            
+            response = session.get(test_url, timeout=timeout)
+            response.raise_for_status()
+            
+            latency = (time.time() - start_time) * 1000  # Convert to milliseconds
+            
+            logger.info(f"Proxy {self.name} test successful. Latency: {latency:.2f}ms")
+            return True, latency, None
+            
+        except Exception as e:
+            logger.warning(f"Proxy {self.name} test failed with {test_url}: {str(e)}")
+            continue
+    
+    error_msg = f"All test URLs failed for proxy {self.name}"
+    logger.error(error_msg)
+    return False, 0.0, error_msg
 
-    def test_connection(self, timeout: int = 10) -> Tuple[bool, float, Optional[str]]:
-        """
-        Test proxy connection and measure latency.
-        
-        Returns:
-            Tuple of (success, latency_ms, error_message)
-        """
-        test_urls = [
-            "https://httpbin.org/ip",
-            "https://api.ipify.org?format=json",
-            "https://ifconfig.me/ip"
-        ]
-        
-        for test_url in test_urls:
-            try:
-                start_time = time.time()
-                
-                session = requests.Session()
-                session.proxies.update(self.proxy_dict)
-                
-                if self.username and self.password:
-                    session.auth = HTTPProxyAuth(self.username, self.password)
-                
-                response = session.get(test_url, timeout=timeout)
-                response.raise_for_status()
-                
-                latency = (time.time() - start_time) * 1000  # Convert to milliseconds
-                
-                logger.info(f"Proxy {self.name} test successful. Latency: {latency:.2f}ms")
-                return True, latency, None
-                
-            except Exception as e:
-                logger.warning(f"Proxy {self.name} test failed with {test_url}: {str(e)}")
-                continue
-        
-        error_msg = f"All test URLs failed for proxy {self.name}"
-        logger.error(error_msg)
-        return False, 0.0, error_msg
-
-
-@dataclass
-class ProxySettings:
-    """Global proxy settings configuration."""
-    enabled: bool = False
-    proxies: List[ProxyConfig] = field(default_factory=list)
-    auto_failover: bool = True
-    test_timeout: int = 10
-    health_check_interval: int = 300  # 5 minutes
-    max_retries: int = 3
-    retry_backoff_factor: float = 1.0
+# Add methods to ProxyConfig class dynamically
+ProxyConfig.__post_init__ = _proxy_config_post_init
+ProxyConfig.proxy_url = property(_proxy_config_proxy_url)
+ProxyConfig.proxy_dict = property(_proxy_config_proxy_dict)
+ProxyConfig.test_connection = _proxy_config_test_connection
 
 
 class ProxyManager:

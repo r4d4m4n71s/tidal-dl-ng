@@ -16,9 +16,9 @@ from tidal_dl_ng.model.cfg import Settings as ModelSettings
 from tidal_dl_ng.model.cfg import Token as ModelToken
 from tidal_dl_ng.model.cfg import ProxyConfig, ProxySettings
 from tidal_dl_ng.proxy import ProxyManager
-from tidal_dl_ng.auth_server import LocalAuthServer
 from tidal_dl_ng.enhanced_session import EnhancedTidalSession, create_enhanced_tidal_session
 from tidal_dl_ng.tidal_proxy_integration import TidalProxyIntegration
+from tidal_dl_ng.auth.authentication_manager import AuthenticationManager
 
 
 class BaseConfig:
@@ -99,17 +99,22 @@ class Tidal(BaseConfig, metaclass=SingletonMeta):
     settings: Settings
     is_pkce: bool
     proxy_manager: Optional[ProxyManager] = None
-    auth_server: Optional[LocalAuthServer] = None
     tidal_integration: Optional[TidalProxyIntegration] = None
 
-    def __init__(self, settings: Settings = None):
+    def __init__(self, settings: Settings = None, authenticated_session: EnhancedTidalSession = None):
         self.cls_model = ModelToken
         self.file_path = path_file_token()
         self.token_from_storage = self.read(self.file_path)
 
-        if settings:
+        if authenticated_session:
+            # Use provided authenticated session (from AuthenticationManager)
+            self.session = authenticated_session
             self.settings = settings
-            # Create proxy-enhanced session using the integration layer
+            if settings:
+                self.settings_apply()
+        elif settings:
+            # Create session using settings (legacy support)
+            self.settings = settings
             self.session = create_enhanced_tidal_session(
                 settings=settings,
                 quality=settings.data.quality_audio,
@@ -173,74 +178,48 @@ class Tidal(BaseConfig, metaclass=SingletonMeta):
         self.set_option("expiry_time", self.session.expiry_time)
         self.save()
 
-    def login(self, fn_print: Callable) -> bool:
-        """Enhanced login method with comprehensive proxy and local server support."""
-        is_token = self.login_token()
-        result = False
+    def authenticate_via_manager(self, parent=None) -> bool:
+        """Authenticate using the new AuthenticationManager architecture."""
+        if not self.settings:
+            print("No settings available for authentication.")
+            return False
+            
+        try:
+            auth_manager = AuthenticationManager(self.settings, parent=parent)
+            authenticated_tidal = auth_manager.authenticate()
+            
+            if authenticated_tidal and authenticated_tidal.session:
+                # Replace current session with authenticated one
+                self.session = authenticated_tidal.session
+                return True
+            else:
+                print("Authentication via AuthenticationManager failed.")
+                return False
+                
+        except Exception as e:
+            print(f"Error during authentication: {str(e)}")
+            return False
 
+    def login(self, fn_print: Callable) -> bool:
+        """Simplified login method - delegates to AuthenticationManager or uses token."""
+        is_token = self.login_token()
+        
         if is_token:
             fn_print("Yep, looks good! You are logged in.")
-            result = True
-        elif not is_token:
-            fn_print("You either do not have a token or your token is invalid.")
-            fn_print("No worries, we will handle this...")
-            
-            # Priority 1: Use local server authentication if available and enabled
-            if (self.auth_server and 
-                self.settings.data.auth_settings.use_local_server and 
-                self.proxy_manager and 
-                self.proxy_manager.settings.enabled):
-                
-                fn_print("Using local server authentication with proxy...")
-                success, error = self.auth_server.authenticate_with_tidal(self.session)
-                
-                if success:
-                    result = self.login_finalize()
-                    if result:
-                        fn_print("The login was successful. I have stored your credentials (token).")
-                    else:
-                        fn_print("Token validation failed after authentication.")
-                else:
-                    fn_print(f"Local server authentication failed: {error}")
-                    # Fallback to proxy-enhanced device linking
-                    fn_print("Falling back to proxy-enhanced device linking...")
-                    result = self._perform_device_linking(fn_print)
-            
-            # Priority 2: Use proxy-enhanced device linking if proxy is available
-            elif self.session.proxy_manager:
-                fn_print("Using proxy-enhanced authentication...")
-                result = self._perform_device_linking(fn_print)
-            
-            # Priority 3: Use standard device linking as fallback
-            else:
-                fn_print("Using standard authentication...")
-                result = self._perform_device_linking(fn_print)
-
-        return result
-
-    def _perform_device_linking(self, fn_print: Callable) -> bool:
-        """Perform device linking authentication with proxy support if available."""
-        # Use proxy-aware login if proxy manager is available
-        if self.session.proxy_manager:
-            self.session.login_oauth_simple_with_proxy(fn_print)
-        else:
-            # Traditional device linking method
-            self.session.login_oauth_simple(fn_print)
-        
-        # Alternative: PKCE authorization (was necessary for HI_RES_LOSSLESS streaming earlier)
-        # if self.session.proxy_manager:
-        #     self.session.login_pkce_with_proxy(fn_print)
-        # else:
-        #     self.session.login_pkce(fn_print)
-
-        is_login = self.login_finalize()
-
-        if is_login:
-            fn_print("The login was successful. I have stored your credentials (token).")
             return True
         else:
-            fn_print("Something went wrong. Did you login using your browser correctly? May try again...")
-            return False
+            fn_print("You either do not have a token or your token is invalid.")
+            fn_print("Using AuthenticationManager for authentication...")
+            
+            # Use the new authentication architecture
+            result = self.authenticate_via_manager()
+            
+            if result:
+                fn_print("Authentication successful! Token has been stored.")
+                return True
+            else:
+                fn_print("Authentication failed. Please check your configuration.")
+                return False
 
     def _init_proxy_manager(self):
         """Initialize proxy manager from settings."""
@@ -248,9 +227,6 @@ class Tidal(BaseConfig, metaclass=SingletonMeta):
             # Use the proxy settings directly since they're already compatible
             self.proxy_manager = ProxyManager(self.settings.data.proxy_settings)
             
-            # Initialize auth server if local server auth is enabled
-            if self.settings.data.auth_settings.use_local_server:
-                self.auth_server = LocalAuthServer(self.proxy_manager, self.settings.data.auth_settings)
             
             print(f"Proxy manager initialized with {len(self.settings.data.proxy_settings.proxies)} proxy(ies)")
         else:

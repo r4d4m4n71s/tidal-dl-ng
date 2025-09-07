@@ -15,6 +15,7 @@ from tidal_dl_ng.model.cfg import HelpSettings
 from tidal_dl_ng.model.cfg import Settings as ModelSettings
 from tidal_dl_ng.model.meta import ReleaseLatest
 from tidal_dl_ng.ui.dialog_login import Ui_DialogLogin
+from tidal_dl_ng.ui.dialog_proxy_config import Ui_DialogProxyConfig
 from tidal_dl_ng.ui.dialog_settings import Ui_DialogSettings
 from tidal_dl_ng.ui.dialog_version import Ui_DialogVersion
 
@@ -305,3 +306,249 @@ class DialogPreferences(QtWidgets.QDialog):
             setattr(self.settings.data, item, getattr(self.ui, self.prefix_spin_box + item).value())
 
         self.s_settings_save.emit()
+
+
+class DialogProxyConfig(QtWidgets.QDialog):
+    """Proxy configuration dialog."""
+
+    ui: Ui_DialogProxyConfig
+    settings: Settings
+    result_skip_proxy: bool = False
+    result_configured: bool = False
+
+    def __init__(self, settings: Settings, parent=None):
+        super().__init__(parent)
+
+        self.settings = settings
+        
+        # Create an instance of the GUI
+        self.ui = Ui_DialogProxyConfig()
+
+        # Run the .setupUi() method to show the GUI
+        self.ui.setupUi(self)
+        
+        # Initialize UI state
+        self._init_ui()
+        self._connect_signals()
+        
+        # Load existing proxy settings if any
+        self._load_existing_settings()
+        
+        # Show the dialog
+        self.exec()
+
+    def _init_ui(self):
+        """Initialize UI state and styling."""
+        # Set default proxy type to HTTPS
+        self.ui.cb_proxy_type.setCurrentIndex(1)  # HTTPS
+        
+        # Set initial status message
+        self._update_status("Ready to configure proxy settings.", "info")
+
+    def _connect_signals(self):
+        """Connect UI signals to handlers."""
+        self.ui.pb_test_connection.clicked.connect(self._test_connection)
+        self.ui.pb_skip.clicked.connect(self._skip_proxy)
+        self.ui.pb_cancel.clicked.connect(self._cancel)
+        self.ui.pb_save.clicked.connect(self._save_and_continue)
+        
+        # Enable/disable form validation on input changes
+        self.ui.le_proxy_host.textChanged.connect(self._validate_form)
+        self.ui.sb_proxy_port.valueChanged.connect(self._validate_form)
+        self.ui.cb_enable_proxy.toggled.connect(self._validate_form)
+
+    def _load_existing_settings(self):
+        """Load existing proxy settings into the form."""
+        proxy_settings = self.settings.data.proxy_settings
+        
+        if proxy_settings.enabled and proxy_settings.proxies:
+            # Load the first proxy configuration
+            proxy = proxy_settings.proxies[0]
+            
+            self.ui.cb_enable_proxy.setChecked(True)
+            self.ui.le_proxy_host.setText(proxy.host)
+            self.ui.sb_proxy_port.setValue(proxy.port)
+            
+            # Set proxy type
+            proxy_types = {"http": 0, "https": 1, "socks5": 2}
+            if proxy.proxy_type.lower() in proxy_types:
+                self.ui.cb_proxy_type.setCurrentIndex(proxy_types[proxy.proxy_type.lower()])
+            
+            # Set authentication if available
+            if proxy.username:
+                self.ui.le_proxy_username.setText(proxy.username)
+            if proxy.password:
+                self.ui.le_proxy_password.setText(proxy.password)
+
+    def _validate_form(self):
+        """Validate form inputs and enable/disable buttons accordingly."""
+        if not self.ui.cb_enable_proxy.isChecked():
+            self.ui.pb_save.setEnabled(True)
+            return
+        
+        host = self.ui.le_proxy_host.text().strip()
+        port = self.ui.sb_proxy_port.value()
+        
+        is_valid = bool(host) and 1 <= port <= 65535
+        
+        self.ui.pb_save.setEnabled(is_valid)
+        self.ui.pb_test_connection.setEnabled(is_valid)
+
+    def _test_connection(self):
+        """Test the proxy connection."""
+        if not self.ui.cb_enable_proxy.isChecked():
+            self._update_status("Proxy is not enabled.", "warning")
+            return
+        
+        # Disable test button during testing
+        self.ui.pb_test_connection.setEnabled(False)
+        self.ui.pb_test_connection.setText("Testing...")
+        
+        try:
+            # Create proxy configuration from form data
+            proxy_config = self._create_proxy_config()
+            
+            self._update_status("Testing proxy connection...", "info")
+            
+            # Test the connection
+            success, latency, error = proxy_config.test_connection(timeout=10)
+            
+            if success:
+                self._update_status(
+                    f"✓ Proxy connection successful! Latency: {latency:.2f}ms", 
+                    "success"
+                )
+            else:
+                self._update_status(
+                    f"✗ Proxy connection failed: {error}", 
+                    "error"
+                )
+                
+        except Exception as e:
+            self._update_status(f"✗ Error testing proxy: {str(e)}", "error")
+        
+        finally:
+            # Re-enable test button
+            self.ui.pb_test_connection.setEnabled(True)
+            self.ui.pb_test_connection.setText("Test Connection")
+
+    def _create_proxy_config(self):
+        """Create ProxyConfig from form data."""
+        from tidal_dl_ng.proxy import ProxyConfig
+        
+        proxy_type = self.ui.cb_proxy_type.currentText().lower()
+        host = self.ui.le_proxy_host.text().strip()
+        port = self.ui.sb_proxy_port.value()
+        username = self.ui.le_proxy_username.text().strip() or None
+        password = self.ui.le_proxy_password.text().strip() or None
+        
+        return ProxyConfig(
+            name="User Proxy",
+            host=host,
+            port=port,
+            proxy_type=proxy_type,
+            username=username,
+            password=password,
+            protocols=["http", "https"],
+            enabled=True,
+            priority=1
+        )
+
+    def _update_status(self, message: str, status_type: str = "info"):
+        """Update the status display with colored message."""
+        colors = {
+            "info": "#0066cc",
+            "success": "#008000", 
+            "warning": "#ff8800",
+            "error": "#cc0000"
+        }
+        
+        color = colors.get(status_type, colors["info"])
+        
+        html = f"""
+        <html><body style="margin:0; padding:4px;">
+        <p style="margin:0; color:{color}; font-weight:bold;">
+        {message}
+        </p></body></html>
+        """
+        
+        self.ui.te_status.setHtml(html)
+
+    def _skip_proxy(self):
+        """Handle skip proxy button click."""
+        self.result_skip_proxy = True
+        self.result_configured = False
+        self._update_status("Skipping proxy configuration. Using direct connection.", "info")
+        self.accept()
+
+    def _cancel(self):
+        """Handle cancel button click."""
+        self.result_skip_proxy = False
+        self.result_configured = False
+        self.reject()
+
+    def _save_and_continue(self):
+        """Handle save and continue button click."""
+        try:
+            if self.ui.cb_enable_proxy.isChecked():
+                # Validate form
+                if not self._validate_proxy_settings():
+                    return
+                
+                # Create and save proxy configuration
+                proxy_config = self._create_proxy_config()
+                
+                # Update settings
+                self.settings.data.proxy_settings.enabled = True
+                self.settings.data.proxy_settings.proxies = [proxy_config]
+                
+                # Save settings
+                self.settings.save()
+                
+                self.result_configured = True
+                self._update_status("✓ Proxy configuration saved successfully!", "success")
+            else:
+                # User disabled proxy
+                self.settings.data.proxy_settings.enabled = False
+                self.settings.data.proxy_settings.proxies = []
+                self.settings.save()
+                
+                self.result_skip_proxy = True
+                self._update_status("Proxy disabled. Using direct connection.", "info")
+            
+            self.result_skip_proxy = not self.ui.cb_enable_proxy.isChecked()
+            self.accept()
+            
+        except Exception as e:
+            self._update_status(f"✗ Error saving configuration: {str(e)}", "error")
+
+    def _validate_proxy_settings(self) -> bool:
+        """Validate proxy settings before saving."""
+        host = self.ui.le_proxy_host.text().strip()
+        port = self.ui.sb_proxy_port.value()
+        
+        if not host:
+            self._update_status("✗ Proxy host is required.", "error")
+            self.ui.le_proxy_host.setFocus()
+            return False
+        
+        if not (1 <= port <= 65535):
+            self._update_status("✗ Proxy port must be between 1 and 65535.", "error")
+            self.ui.sb_proxy_port.setFocus()
+            return False
+        
+        # Check if username is provided but password is missing (or vice versa)
+        username = self.ui.le_proxy_username.text().strip()
+        password = self.ui.le_proxy_password.text().strip()
+        
+        if username and not password:
+            self._update_status("✗ Password is required when username is provided.", "error")
+            self.ui.le_proxy_password.setFocus()
+            return False
+        
+        if password and not username:
+            self._update_status("✗ Username is required when password is provided.", "error")
+            self.ui.le_proxy_username.setFocus()
+            return False
+        
+        return True
