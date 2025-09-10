@@ -1,9 +1,10 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from dataclasses_json import dataclass_json
 from tidalapi import Quality
 
 from tidal_dl_ng.constants import CoverDimensions, QualityVideo
+from tidal_dl_ng.model.network import ProxySettings, NetworkSettings
 
 
 @dataclass_json
@@ -46,6 +47,8 @@ class Settings:
     playlist_create: bool = False
     metadata_replay_gain: bool = True
     metadata_write_url: bool = True
+    proxy_settings: ProxySettings = field(default_factory=ProxySettings)
+    network_settings: NetworkSettings = field(default_factory=NetworkSettings)
 
 
 @dataclass_json
@@ -101,6 +104,8 @@ class HelpSettings:
     playlist_create: str = "Creates a '_playlist.m3u8' file for downloaded albums, playlists and mixes."
     metadata_replay_gain: str = "Replay gain information will be written to metadata."
     metadata_write_url: str = "URL of the media file will be written to metadata."
+    proxy_settings: str = "HTTP/HTTPS proxy configuration for network requests."
+    network_settings: str = "Network behavior settings including retry logic and timeouts."
 
 
 @dataclass_json

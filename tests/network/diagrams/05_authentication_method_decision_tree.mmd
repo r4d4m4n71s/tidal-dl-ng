@@ -1,0 +1,38 @@
+graph TD
+    Start([Authentication Request]) --> CheckStorage{Token File<br/>Exists?}
+    
+    CheckStorage -->|No| UseOAuth[Use OAuth Authentication]
+    CheckStorage -->|Yes| ReadToken[Read Token from Storage]
+    
+    ReadToken --> ParseToken{Token Data<br/>Valid?}
+    ParseToken -->|No| CleanupToken[Remove Invalid Token]
+    CleanupToken --> UseOAuth
+    
+    ParseToken -->|Yes| CheckExpiry{Token<br/>Expired?}
+    CheckExpiry -->|Yes| TryRefresh[Try Token Refresh]
+    CheckExpiry -->|No| UseToken[Use Token Authentication]
+    
+    TryRefresh --> RefreshSuccess{Refresh<br/>Successful?}
+    RefreshSuccess -->|Yes| UseToken
+    RefreshSuccess -->|No| UseOAuth
+    
+    UseToken --> TokenResult{Token Auth<br/>Result?}
+    TokenResult -->|Success| AuthComplete([Authentication Complete])
+    TokenResult -->|HTTP Error| AnalyzeTokenError[Analyze Token Error]
+    TokenResult -->|JSON Error| AnalyzeTokenError
+    
+    AnalyzeTokenError --> TokenCorrupted{Token<br/>Corrupted?}
+    TokenCorrupted -->|Yes| RemoveToken[Remove Token File]
+    TokenCorrupted -->|No| ProxyTokenError[Handle Proxy Error]
+    
+    RemoveToken --> UseOAuth
+    ProxyTokenError --> AuthComplete
+    
+    UseOAuth --> OAuthResult{OAuth<br/>Result?}
+    OAuthResult -->|Success| AuthComplete
+    OAuthResult -->|Failed| AuthFailed([Authentication Failed])
+    
+    style UseToken fill:#e8f5e8
+    style UseOAuth fill:#e3f2fd
+    style AuthComplete fill:#c8e6c9
+    style AuthFailed fill:#ffcdd2

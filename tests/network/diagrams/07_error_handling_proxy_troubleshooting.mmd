@@ -1,0 +1,39 @@
+graph TD
+    Start([Network Error Occurred]) --> CheckProxy{NetworkManager<br/>Proxy Enabled?}
+    
+    CheckProxy -->|No| GenericError[Re-raise Original Error]
+    CheckProxy -->|Yes| GetProxyURL[Get Proxy URL from<br/>ProxyManager]
+    
+    GetProxyURL --> AnalyzeError[Analyze Error Message]
+    AnalyzeError --> ErrorType{Error<br/>Type?}
+    
+    ErrorType -->|407| ProxyAuth[Proxy Authentication Required]
+    ErrorType -->|Timeout| ProxyTimeout[Proxy Timeout]
+    ErrorType -->|Connection| ProxyConnection[Proxy Connection Failed]
+    ErrorType -->|Other| GenericProxy[Generic Proxy Error]
+    
+    ProxyAuth --> AuthMessage["Proxy authentication failed during tidal_login through [proxy_url]"]
+    
+    ProxyTimeout --> GetTimeout[Get Current Timeout Setting]
+    GetTimeout --> TimeoutMessage["TIDAL authentication timed out through proxy [proxy_url].<br/>Try: 1) Check proxy server status<br/>2) Increase timeout to [timeout+10]s<br/>3) Verify proxy credentials"]
+    
+    ProxyConnection --> ConnectionMessage["Cannot connect to TIDAL through proxy [proxy_url].<br/>Troubleshooting steps:<br/>1. Verify proxy server is running: [proxy_url]<br/>2. Check proxy credentials: username/password<br/>3. Test proxy manually: curl --proxy [proxy_url] https://api.tidal.com<br/>4. Verify firewall allows proxy traffic"]
+    
+    GenericProxy --> GenericMessage["TIDAL authentication failed through proxy [proxy_url].<br/>Original error: [error]"]
+    
+    AuthMessage --> ThrowCustom[Throw ProxyAuthenticationError]
+    TimeoutMessage --> ThrowCustom[Throw NetworkTimeoutError]
+    ConnectionMessage --> ThrowCustom[Throw ProxyConnectionError]
+    GenericMessage --> ThrowCustom[Throw ProxyConnectionError]
+    
+    ThrowCustom --> UserMessage[Display User-Friendly Message]
+    GenericError --> UserMessage
+    
+    UserMessage --> End([End])
+    
+    style ProxyAuth fill:#ffebee
+    style ProxyTimeout fill:#ffebee
+    style ProxyConnection fill:#ffebee
+    style AuthMessage fill:#ffcdd2
+    style TimeoutMessage fill:#ffcdd2
+    style ConnectionMessage fill:#ffcdd2

@@ -3,6 +3,16 @@ from enum import StrEnum
 CTX_TIDAL: str = "tidal"
 REQUESTS_TIMEOUT_SEC: int = 45
 EXTENSION_LYRICS: str = ".lrc"
+
+# Network-related constants
+DEFAULT_USER_AGENT: str = "TIDAL/2.19.1 (Linux;Android 13; Android Auto) okhttp/4.10.0"
+PROXY_TEST_URL: str = "https://httpbin.org/ip"
+NETWORK_RETRY_ATTEMPTS: int = 3
+NETWORK_RETRY_BACKOFF_FACTOR: float = 1.5
+NETWORK_RETRY_MAX_DELAY: float = 60.0
+NETWORK_CONNECTION_TIMEOUT: int = 30
+NETWORK_READ_TIMEOUT: int = 45
+PROXY_CONNECTION_TIMEOUT: int = 10
 UNIQUIFY_THRESHOLD: int = 99
 FILENAME_SANITIZE_PLACEHOLDER: str = "_"
 COVER_NAME: str = "cover.jpg"

@@ -39,7 +39,7 @@ pyqtdarktheme-fork = { version = "^2.3.4", optional = true }
 rich = "^14.1.0"
 toml = "^0.10.2"
 typer = "^0.16.0"
-tidalapi = "^0.8.5"
+tidalapi = { path = "D:/SoftwareProjects/TIDAL/python-tidal", develop = true }
 python-ffmpeg = "^2.0.12"
 pycryptodome = "^3.23.0"
 

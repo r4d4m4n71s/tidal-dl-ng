@@ -2,6 +2,9 @@ import json
 
 import requests
 
+from tidal_dl_ng.constants import REQUESTS_TIMEOUT_SEC
+from tidal_dl_ng.network import NetworkManager
+
 # See also
 # https://github.com/yaronzz/Tidal-Media-Downloader/commit/1d5b8cd8f65fd1def45d6406778248249d6dfbdf
 # https://github.com/yaronzz/Tidal-Media-Downloader/pull/840
@@ -67,8 +70,6 @@ __ERROR_KEY__ = (
     },
 )
 
-from tidal_dl_ng.constants import REQUESTS_TIMEOUT_SEC
-
 
 def getNum():
     return len(__API_KEYS__["keys"])
@@ -102,12 +103,24 @@ def getVersion():
 
 # Load from gist
 try:
-    respond = requests.get(
-        "https://api.github.com/gists/48d01f5a24b4b7b37f19443977c22cd6", timeout=REQUESTS_TIMEOUT_SEC
+    # Use NetworkManager for API key fetching
+    network_manager = NetworkManager()
+    response = network_manager.get_json(
+        "https://api.github.com/gists/48d01f5a24b4b7b37f19443977c22cd6",
+        timeout=(REQUESTS_TIMEOUT_SEC, REQUESTS_TIMEOUT_SEC)
     )
-    if respond.status_code == 200:
-        content = respond.json()["files"]["tidal-api-key.json"]["content"]
+    
+    if response.success and response.content:
+        content = response.content["files"]["tidal-api-key.json"]["content"]
         __API_KEYS__ = json.loads(content)
+    else:
+        # Fallback to direct requests if NetworkManager fails
+        respond = requests.get(
+            "https://api.github.com/gists/48d01f5a24b4b7b37f19443977c22cd6", timeout=REQUESTS_TIMEOUT_SEC
+        )
+        if respond.status_code == 200:
+            content = respond.json()["files"]["tidal-api-key.json"]["content"]
+            __API_KEYS__ = json.loads(content)
 except Exception as e:
     # TODO: Implement proper logging.
     print(e)

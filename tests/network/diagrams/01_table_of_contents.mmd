@@ -1,0 +1,64 @@
+graph TB
+    subgraph "Application Layer"
+        CLI[CLI Interface<br/>cli.py]
+        GUI[GUI Interface<br/>gui.py]
+    end
+    
+    subgraph "Configuration Layer"
+        Settings[Settings Singleton<br/>config.py]
+        Tidal[Tidal Class<br/>config.py]
+        ModelCfg[Configuration Models<br/>model/cfg.py]
+    end
+    
+    subgraph "Network Layer"
+        NM[NetworkManager<br/>Singleton]
+        PM[ProxyManager<br/>Singleton]
+        HCF[HttpClientFactory]
+        RS[RetryStrategy]
+    end
+    
+    subgraph "Integration Layer"
+        SessionInj[Session Injection]
+        SessionMon[Session Monitoring]
+        ErrorConv[Error Conversion]
+    end
+    
+    subgraph "External Services"
+        TidalAPI[TIDAL API<br/>tidalapi.Session]
+        ProxyServer[Proxy Server]
+        TidalServices[TIDAL Services]
+    end
+    
+    subgraph "Storage Layer"
+        TokenFile[Token Storage]
+        ConfigFile[Settings File]
+        MediaFiles[Downloaded Media]
+    end
+    
+    CLI --> Settings
+    GUI --> Settings
+    Settings --> Tidal
+    Settings --> NM
+    
+    Tidal --> SessionInj
+    Tidal --> SessionMon
+    Tidal --> ErrorConv
+    
+    NM --> PM
+    NM --> HCF
+    NM --> RS
+    
+    SessionInj --> TidalAPI
+    SessionMon --> TidalAPI
+    
+    PM --> ProxyServer
+    HCF --> TidalServices
+    
+    Tidal --> TokenFile
+    Settings --> ConfigFile
+    NM --> MediaFiles
+    
+    style NM fill:#e1f5fe
+    style Settings fill:#f3e5f5
+    style Tidal fill:#e8f5e8
+    style SessionInj fill:#fff3e0

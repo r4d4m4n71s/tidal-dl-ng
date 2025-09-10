@@ -1,0 +1,72 @@
+graph TD
+    Start([Download Request]) --> ValidateMedia[Validate Media Item]
+    ValidateMedia --> MediaValid{Media<br/>Available?}
+    
+    MediaValid -->|No| SkipMedia[Skip Unavailable Media]
+    MediaValid -->|Yes| PrepareFile[Prepare File Paths]
+    
+    PrepareFile --> CheckExisting{File Already<br/>Exists?}
+    CheckExisting -->|Yes & Skip| SkipDownload[Skip Existing File]
+    CheckExisting -->|No| GetStream[Get Stream Information]
+    
+    GetStream --> StreamType{Media<br/>Type?}
+    StreamType -->|Track| GetManifest[Get Stream Manifest]
+    StreamType -->|Video| GetM3U8[Get M3U8 Playlist]
+    
+    GetManifest --> GetURLs[Extract Segment URLs]
+    GetM3U8 --> GetURLs
+    
+    GetURLs --> SetupProgress[Setup Progress Tracking]
+    SetupProgress --> CreateSessions[Create NetworkManager Sessions]
+    
+    CreateSessions --> ThreadPool[Create Thread Pool]
+    ThreadPool --> DownloadSegments[Download Segments<br/>Multi-threaded]
+    
+    DownloadSegments --> SegmentLoop{More<br/>Segments?}
+    SegmentLoop -->|Yes| DownloadSegment[Download Single Segment]
+    SegmentLoop -->|No| MergeSegments[Merge All Segments]
+    
+    DownloadSegment --> UseNMSession[Use NetworkManager Session]
+    UseNMSession --> SegmentRequest[Make Segment Request]
+    SegmentRequest --> SegmentSuccess{Segment<br/>Success?}
+    
+    SegmentSuccess -->|Yes| WriteSegment[Write Segment to Disk]
+    SegmentSuccess -->|No| RetrySegment[Retry with Exponential Backoff]
+    
+    RetrySegment --> RetryExhausted{Retries<br/>Exhausted?}
+    RetryExhausted -->|Yes| SegmentFailed[Mark Segment Failed]
+    RetryExhausted -->|No| SegmentRequest
+    
+    WriteSegment --> UpdateProgress[Update Progress Bar]
+    UpdateProgress --> SegmentLoop
+    
+    SegmentFailed --> SegmentLoop
+    
+    MergeSegments --> MergeSuccess{Merge<br/>Successful?}
+    MergeSuccess -->|No| DownloadFailed[Download Failed]
+    MergeSuccess -->|Yes| CheckEncryption{Stream<br/>Encrypted?}
+    
+    CheckEncryption -->|Yes| DecryptFile[Decrypt File]
+    CheckEncryption -->|No| ProcessMetadata[Process Metadata]
+    
+    DecryptFile --> ProcessMetadata
+    ProcessMetadata --> DownloadCover[Download Cover Image<br/>via NetworkManager]
+    DownloadCover --> GetLyrics[Get Lyrics<br/>via NetworkManager]
+    GetLyrics --> WriteMetadata[Write Metadata to File]
+    
+    WriteMetadata --> MoveFile[Move to Final Location]
+    MoveFile --> CreateSymlink{Symlink<br/>Required?}
+    
+    CreateSymlink -->|Yes| CreateLink[Create Symlink]
+    CreateSymlink -->|No| DownloadComplete[Download Complete]
+    
+    CreateLink --> DownloadComplete
+    SkipMedia --> DownloadComplete
+    SkipDownload --> DownloadComplete
+    DownloadFailed --> DownloadComplete
+    
+    style UseNMSession fill:#fff3e0
+    style DownloadSegments fill:#e1f5fe
+    style ThreadPool fill:#e1f5fe
+    style DownloadCover fill:#fff3e0
+    style GetLyrics fill:#fff3e0

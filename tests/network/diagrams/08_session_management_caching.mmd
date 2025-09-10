@@ -1,0 +1,63 @@
+graph TD
+    Start([Session Request]) --> SessionType{Session<br/>Type?}
+    
+    SessionType -->|auth| CheckAuthCache{Auth Session<br/>in Cache?}
+    SessionType -->|download| CheckDownloadCache{Download Session<br/>in Cache?}
+    SessionType -->|api| CheckAPICache{API Session<br/>in Cache?}
+    SessionType -->|default| CheckDefaultCache{Default Session<br/>in Cache?}
+    
+    CheckAuthCache -->|Yes| ReturnAuth[Return Cached Auth Session]
+    CheckAuthCache -->|No| CreateAuth[Create Auth Session]
+    
+    CheckDownloadCache -->|Yes| ReturnDownload[Return Cached Download Session]
+    CheckDownloadCache -->|No| CreateDownload[Create Download Session]
+    
+    CheckAPICache -->|Yes| ReturnAPI[Return Cached API Session]
+    CheckAPICache -->|No| CreateAPI[Create API Session]
+    
+    CheckDefaultCache -->|Yes| ReturnDefault[Return Cached Default Session]
+    CheckDefaultCache -->|No| CreateDefault[Create Default Session]
+    
+    CreateAuth --> ConfigureAuth[Configure for Authentication<br/>- 10s timeout<br/>- Auth headers<br/>- Proxy settings]
+    CreateDownload --> ConfigureDownload[Configure for Downloads<br/>- 30s timeout<br/>- Stream support<br/>- Retry adapters]
+    CreateAPI --> ConfigureAPI[Configure for API<br/>- 10s timeout<br/>- JSON headers<br/>- Connection pooling]
+    CreateDefault --> ConfigureDefault[Configure Default<br/>- Standard settings<br/>- Basic adapters]
+    
+    ConfigureAuth --> ApplyProxy[Apply Proxy Settings<br/>from ProxyManager]
+    ConfigureDownload --> ApplyProxy
+    ConfigureAPI --> ApplyProxy
+    ConfigureDefault --> ApplyProxy
+    
+    ApplyProxy --> ProxyEnabled{Proxy<br/>Enabled?}
+    ProxyEnabled -->|Yes| SetProxyDict[Set Proxy Dictionary<br/>on Session]
+    ProxyEnabled -->|No| SkipProxy[Skip Proxy Configuration]
+    
+    SetProxyDict --> CacheSession[Cache Session by Type]
+    SkipProxy --> CacheSession
+    
+    CacheSession --> ReturnSession[Return Configured Session]
+    
+    ReturnAuth --> SessionReady[Session Ready for Use]
+    ReturnDownload --> SessionReady
+    ReturnAPI --> SessionReady
+    ReturnDefault --> SessionReady
+    ReturnSession --> SessionReady
+    
+    SessionReady --> MonitorUsage[Monitor Session Usage]
+    MonitorUsage --> SessionIntegrity{Session Integrity<br/>Check Required?}
+    
+    SessionIntegrity -->|Yes| ValidateSession[Validate Session State]
+    SessionIntegrity -->|No| End([Session in Use])
+    
+    ValidateSession --> SessionValid{Session<br/>Still Valid?}
+    SessionValid -->|Yes| End
+    SessionValid -->|No| InvalidateCache[Invalidate Cached Session]
+    
+    InvalidateCache --> Start
+    
+    style CacheSession fill:#e1f5fe
+    style ApplyProxy fill:#fff3e0
+    style MonitorUsage fill:#fff3e0
+    style ConfigureAuth fill:#e8f5e8
+    style ConfigureDownload fill:#e3f2fd
+    style ConfigureAPI fill:#f3e5f5

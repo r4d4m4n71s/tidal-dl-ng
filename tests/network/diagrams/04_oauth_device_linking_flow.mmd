@@ -1,0 +1,48 @@
+graph TD
+    Start([OAuth Authentication Start]) --> NoToken[No Valid Token Available]
+    NoToken --> MonitorIntegrity[Monitor Session Integrity]
+    
+    MonitorIntegrity --> InjectNM[Inject NetworkManager Session]
+    InjectNM --> InitOAuth[session.login_oauth_simple]
+    
+    InitOAuth --> DeviceCode[Request Device Code<br/>from TIDAL]
+    DeviceCode --> DisplayCode[Display Code to User]
+    DisplayCode --> OpenBrowser[Open Browser for<br/>User Authorization]
+    
+    OpenBrowser --> UserAuth[User Authorizes<br/>in Browser]
+    UserAuth --> PollToken[Poll for Access Token]
+    
+    PollToken --> TokenReceived{Token<br/>Received?}
+    TokenReceived -->|No| WaitPoll[Wait and Poll Again]
+    WaitPoll --> PollToken
+    
+    TokenReceived -->|Yes| ValidateLogin[session.check_login]
+    ValidateLogin --> LoginValid{Login<br/>Valid?}
+    
+    LoginValid -->|Yes| PersistToken[Persist Token to Storage]
+    LoginValid -->|No| AnalyzeError[Analyze OAuth Error]
+    
+    AnalyzeError --> ProxyCheck{Proxy-Related<br/>Error?}
+    
+    ProxyCheck -->|Yes| ProxyAuth{407 Proxy Auth<br/>Required?}
+    ProxyCheck -->|Yes| ProxyTimeout{Timeout<br/>Error?}
+    ProxyCheck -->|Yes| ProxyConnection{Connection<br/>Error?}
+    ProxyCheck -->|No| OAuthFailed[OAuth Process Failed]
+    
+    ProxyAuth -->|Yes| AuthError[ProxyAuthenticationError<br/>with proxy troubleshooting]
+    ProxyTimeout -->|Yes| TimeoutError[NetworkTimeoutError<br/>with timeout suggestions]
+    ProxyConnection -->|Yes| ConnError[ProxyConnectionError<br/>with connection steps]
+    
+    PersistToken --> Success([OAuth Success])
+    AuthError --> Failed([OAuth Failed])
+    TimeoutError --> Failed
+    ConnError --> Failed
+    OAuthFailed --> Failed
+    
+    style InjectNM fill:#fff3e0
+    style MonitorIntegrity fill:#fff3e0
+    style UserAuth fill:#e3f2fd
+    style OpenBrowser fill:#e3f2fd
+    style ProxyAuth fill:#ffebee
+    style ProxyTimeout fill:#ffebee
+    style ProxyConnection fill:#ffebee

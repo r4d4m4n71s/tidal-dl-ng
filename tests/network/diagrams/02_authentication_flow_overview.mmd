@@ -1,0 +1,31 @@
+graph TD
+    Start([Application Start]) --> InitSettings[Initialize Settings]
+    InitSettings --> ConfigNM[Configure NetworkManager]
+    ConfigNM --> InitTidal[Initialize Tidal Class]
+    
+    InitTidal --> InjectSession[Inject NetworkManager Session]
+    InjectSession --> CheckToken{Token from<br/>Storage?}
+    
+    CheckToken -->|Yes| TokenAuth[Token-Based Authentication]
+    CheckToken -->|No| OAuthAuth[OAuth Authentication]
+    
+    TokenAuth --> MonitorSession[Monitor Session Integrity]
+    OAuthAuth --> MonitorSession
+    
+    MonitorSession --> AuthSuccess{Authentication<br/>Successful?}
+    
+    AuthSuccess -->|Yes| Ready[Ready for Operations]
+    AuthSuccess -->|No| HandleError[Handle Authentication Error]
+    
+    HandleError --> ProxyError{Proxy-Related<br/>Error?}
+    ProxyError -->|Yes| ProxyTrouble[Generate Proxy<br/>Troubleshooting Message]
+    ProxyError -->|No| GenericError[Generic Error Message]
+    
+    ProxyTrouble --> End([End])
+    GenericError --> End
+    Ready --> End
+    
+    style TokenAuth fill:#e8f5e8
+    style OAuthAuth fill:#e3f2fd
+    style MonitorSession fill:#fff3e0
+    style ProxyTrouble fill:#ffebee

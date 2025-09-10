@@ -1,0 +1,41 @@
+graph TD
+    Start([Token Authentication Start]) --> LoadToken[Load Token from Storage]
+    LoadToken --> ValidateToken{Token Valid<br/>& Not Expired?}
+    
+    ValidateToken -->|No| TokenFailed[Token Authentication Failed]
+    ValidateToken -->|Yes| MonitorIntegrity[Monitor Session Integrity]
+    
+    MonitorIntegrity --> InjectNM[Inject NetworkManager Session]
+    InjectNM --> LoadOAuth[session.load_oauth_session]
+    
+    LoadOAuth --> TidalRequest[Make Request to TIDAL]
+    TidalRequest --> RequestSuccess{Request<br/>Successful?}
+    
+    RequestSuccess -->|Yes| PersistToken[Persist Updated Token]
+    RequestSuccess -->|No| AnalyzeError[Analyze Error]
+    
+    AnalyzeError --> ProxyCheck{Proxy-Related<br/>Error?}
+    
+    ProxyCheck -->|Yes| ProxyAuth{407 Proxy Auth<br/>Required?}
+    ProxyCheck -->|Yes| ProxyTimeout{Timeout<br/>Error?}
+    ProxyCheck -->|Yes| ProxyConnection{Connection<br/>Error?}
+    ProxyCheck -->|No| TokenCorrupt[Token Corrupted]
+    
+    ProxyAuth -->|Yes| AuthError[ProxyAuthenticationError<br/>with troubleshooting]
+    ProxyTimeout -->|Yes| TimeoutError[NetworkTimeoutError<br/>with suggestions]
+    ProxyConnection -->|Yes| ConnError[ProxyConnectionError<br/>with steps]
+    
+    TokenCorrupt --> RemoveToken[Remove Corrupted Token]
+    RemoveToken --> TokenFailed
+    
+    PersistToken --> Success([Authentication Success])
+    AuthError --> Failed([Authentication Failed])
+    TimeoutError --> Failed
+    ConnError --> Failed
+    TokenFailed --> Failed
+    
+    style InjectNM fill:#fff3e0
+    style MonitorIntegrity fill:#fff3e0
+    style ProxyAuth fill:#ffebee
+    style ProxyTimeout fill:#ffebee
+    style ProxyConnection fill:#ffebee

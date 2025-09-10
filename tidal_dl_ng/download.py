@@ -31,6 +31,7 @@ from tidalapi.exceptions import TooManyRequests
 from tidalapi.media import AudioExtensions, Codec, Quality, Stream, StreamManifest, VideoExtensions
 
 from tidal_dl_ng.config import Settings
+from tidal_dl_ng.network import NetworkManager
 from tidal_dl_ng.constants import (
     CHUNK_SIZE,
     COVER_NAME,
@@ -69,6 +70,10 @@ from tidal_dl_ng.model.gui_data import ProgressBars
 class RequestsClient:
     """HTTP client for downloading text content from a URI."""
 
+    def __init__(self) -> None:
+        """Initialize the RequestsClient."""
+        self.network_manager = NetworkManager()
+
     def download(
         self, uri: str, timeout: int = REQUESTS_TIMEOUT_SEC, headers: dict | None = None, verify_ssl: bool = True
     ) -> tuple[str, str]:
@@ -86,9 +91,22 @@ class RequestsClient:
         if not headers:
             headers = {}
 
-        o = requests.get(uri, timeout=timeout, headers=headers)
-
-        return o.text, o.url
+        # Use NetworkManager for the request
+        response = self.network_manager.make_request(
+            uri, 
+            method="GET",
+            headers=headers,
+            timeout=(timeout, timeout),
+            verify=verify_ssl
+        )
+        
+        if response.success and isinstance(response.content, (str, bytes)):
+            content = response.content.decode('utf-8') if isinstance(response.content, bytes) else response.content
+            return content, uri
+        else:
+            # Fallback to direct requests if NetworkManager fails
+            o = requests.get(uri, timeout=timeout, headers=headers, verify=verify_ssl)
+            return o.text, o.url
 
 
 # TODO: Use pathlib.Path everywhere
@@ -104,6 +122,7 @@ class Download:
     progress_overall: Progress
     event_abort: Event
     event_run: Event
+    network_manager: NetworkManager
 
     def __init__(
         self,
@@ -140,6 +159,9 @@ class Download:
         self.path_base = path_base
         self.event_abort = event_abort
         self.event_run = event_run
+
+        # Initialize network manager
+        self.network_manager = NetworkManager()
 
         if not self.settings.data.path_binary_ffmpeg and (
             self.settings.data.video_convert_mp4 or self.settings.data.extract_flac
@@ -435,28 +457,24 @@ class Download:
         if not self.event_run.is_set():
             self.event_run.wait()
 
-        # Retry download on failed segments, with an exponential delay between retries
-        with requests.Session() as s:
-            retries = Retry(total=5, backoff_factor=1)  # , status_forcelist=[ 502, 503, 504 ])
+        # Use NetworkManager's session for download with retry logic
+        try:
+            session = self.network_manager.get_session("download")
+            # Create the request object with stream=True, so the content won't be loaded into memory at once.
+            r = session.get(url, stream=True, timeout=REQUESTS_TIMEOUT_SEC)
 
-            s.mount("https://", HTTPAdapter(max_retries=retries))
+            r.raise_for_status()
 
-            try:
-                # Create the request object with stream=True, so the content won't be loaded into memory at once.
-                r = s.get(url, stream=True, timeout=REQUESTS_TIMEOUT_SEC)
+            # Write the content to disk. If `chunk_size` is set to `None` the whole file will be written at once.
+            with path_segment.open("wb") as f:
+                for data in r.iter_content(chunk_size=block_size):
+                    f.write(data)
+                    # Advance progress bar.
+                    self.progress.advance(p_task)
 
-                r.raise_for_status()
-
-                # Write the content to disk. If `chunk_size` is set to `None` the whole file will be written at once.
-                with path_segment.open("wb") as f:
-                    for data in r.iter_content(chunk_size=block_size):
-                        f.write(data)
-                        # Advance progress bar.
-                        self.progress.advance(p_task)
-
-                result = True
-            except Exception:
-                self.progress.advance(p_task)
+            result = True
+        except Exception:
+            self.progress.advance(p_task)
 
         # To send the progress to the GUI, we need to emit the percentage.
         if not progress_to_stdout:
@@ -1123,13 +1141,20 @@ class Download:
 
         if url:
             try:
-                response: requests.Response = requests.get(url, timeout=REQUESTS_TIMEOUT_SEC)
-                result = response.content
+                # Use NetworkManager for cover image downloads
+                network_manager = NetworkManager()
+                response = network_manager.make_request(url, method="GET", timeout=(REQUESTS_TIMEOUT_SEC, REQUESTS_TIMEOUT_SEC))
+                
+                if response.success and response.content:
+                    result = response.content if isinstance(response.content, bytes) else response.content.encode('utf-8')
+                else:
+                    # Fallback to direct requests if NetworkManager fails
+                    response_fallback: requests.Response = requests.get(url, timeout=REQUESTS_TIMEOUT_SEC)
+                    result = response_fallback.content
+                    response_fallback.close()
             except Exception as e:
                 # TODO: Implement propper logging.
                 print(e)
-            finally:
-                response.close()
         elif path_file:
             try:
                 with open(path_file, "rb") as f:
